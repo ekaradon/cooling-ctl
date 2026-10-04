@@ -39,7 +39,8 @@ Other distributions: copy the same four pieces to the equivalent paths.
 systemctl --user enable --now coolingctl.service
 ```
 
-Create two JSON files in `~/.config/coolingctl/` (reloadable with `SIGHUP`).
+The daemon creates `~/.config/coolingctl/` with sensible defaults on first
+start — edit them freely, `SIGHUP` reloads. Reference:
 
 `silent-curve.json` — temperature → percent curve, linear interpolation:
 
@@ -48,7 +49,7 @@ Create two JSON files in `~/.config/coolingctl/` (reloadable with `SIGHUP`).
     "curve": [
         { "temp": 0,  "percent": 0 },
         { "temp": 76, "percent": 20 },
-        { "temp": 85, "percent": 35 },
+        { "temp": 85, "percent": 55 },
         { "temp": 98, "percent": 100 }
     ],
     "interval": 3,
@@ -57,14 +58,13 @@ Create two JSON files in `~/.config/coolingctl/` (reloadable with `SIGHUP`).
 }
 ```
 
-`game-floor.json` — a flat curve; its first point is the game mode fan floor
-(the pad never runs below it while gaming):
+`game-floor.json` — a single-point curve; its **first point's percent is the
+game mode fan floor** (the pad never runs below it while gaming):
 
 ```json
 {
     "curve": [
-        { "temp": 0,   "percent": 33 },
-        { "temp": 120, "percent": 33 }
+        { "temp": 0, "percent": 33 }
     ],
     "interval": 3,
     "hysteresis": 2,

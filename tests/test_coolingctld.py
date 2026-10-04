@@ -7,6 +7,8 @@ Covered specs:
   S3  linear curve interpolation (bounds = extreme points)
   S4  curve JSON loading (sorted curve, floor = first point)
   S5  key=value state file, complete fields, atomic writes
+  S32 config self-provisioning: sensible defaults written on first start
+      when missing (pacman never touches $HOME, the daemon provisions)
 """
 import importlib.util
 import json
@@ -143,10 +145,10 @@ class TestStatusFile(unittest.TestCase):
     def test_format_complet(self):
         tmpdir, content = self._write()
         try:
-            for attendu in ["mode=game", "temp=63.5", "floor_pct=30.0",
+            for expected in ["mode=game", "temp=63.5", "floor_pct=30.0",
                            "floor_rpm=1300", "rpm_cmd=1300",
                            "rpm_reported=1300", "pad_present=1"]:
-                self.assertIn(attendu, content)
+                self.assertIn(expected, content)
             self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicité
         finally:
             shutil.rmtree(tmpdir)
@@ -155,8 +157,36 @@ class TestStatusFile(unittest.TestCase):
         tmpdir, content = self._write(mode="silent", temp=None,
                                       rpm_cmd=None, rpm_rep=None, pad_present=False)
         try:
-            for attendu in ["temp=-1", "rpm_cmd=-1", "rpm_reported=-1", "pad_present=0"]:
-                self.assertIn(attendu, content)
+            for expected in ["temp=-1", "rpm_cmd=-1", "rpm_reported=-1", "pad_present=0"]:
+                self.assertIn(expected, content)
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+class TestDefaults(unittest.TestCase):
+    """S32: config self-provisioning on first start."""
+
+    def test_s32_defaults_created(self):
+        tmpdir = tempfile.mkdtemp()
+        try:
+            d.ensure_configs(curves_dir=tmpdir)
+            for name in ("silent-curve.json", "game-floor.json"):
+                path = os.path.join(tmpdir, name)
+                self.assertTrue(os.path.exists(path), f"{name} must be created")
+                with open(path) as f:
+                    data = json.load(f)
+                self.assertIsInstance(data["curve"], list)
+            # the floor file is a single-point curve: the first point IS the floor
+            with open(os.path.join(tmpdir, "game-floor.json")) as f:
+                floor = json.load(f)["curve"]
+            self.assertEqual(len(floor), 1)
+            self.assertIsInstance(floor[0]["percent"], (int, float))
+            # idempotent: an existing config is never overwritten
+            with open(os.path.join(tmpdir, "game-floor.json"), "w") as f:
+                f.write('{"curve": [{"temp": 0, "percent": 50}]}')
+            d.ensure_configs(curves_dir=tmpdir)
+            with open(os.path.join(tmpdir, "game-floor.json")) as f:
+                self.assertEqual(json.load(f)["curve"][0]["percent"], 50)
         finally:
             shutil.rmtree(tmpdir)
 

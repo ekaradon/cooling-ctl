@@ -58,6 +58,43 @@ GAMING_FILE = os.path.join(CURVES_DIR, "game-floor.json")
 STATUS_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), "coolingctl.status")
 
+# Sensible defaults: written on first start when the config files are
+# missing (pacman never touches $HOME, so the daemon self-provisions).
+DEFAULT_SILENT_CURVE = {
+    "curve": [
+        {"temp": 0, "percent": 0},
+        {"temp": 76, "percent": 20},
+        {"temp": 82, "percent": 35},
+        {"temp": 85, "percent": 55},
+        {"temp": 88, "percent": 75},
+        {"temp": 92, "percent": 90},
+        {"temp": 98, "percent": 100},
+    ],
+    "interval": 3,
+    "hysteresis": 2,
+    "sensors": "auto",
+}
+DEFAULT_FLOOR = {
+    "curve": [{"temp": 0, "percent": 33}],   # first point = the floor
+    "interval": 3,
+    "hysteresis": 2,
+    "sensors": "auto",
+}
+
+
+def ensure_configs(curves_dir=None):
+    """Create the config directory and default files when missing."""
+    d = curves_dir or CURVES_DIR
+    os.makedirs(d, exist_ok=True)
+    for name, data in (("silent-curve.json", DEFAULT_SILENT_CURVE),
+                       ("game-floor.json", DEFAULT_FLOOR)):
+        path = os.path.join(d, name)
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump(data, f, indent=4)
+                f.write("\n")
+            print(f"default config created: {path}", flush=True)
+
 
 # ---------- HID protocol (identical to razer-coolingpad-fancurve) ----------
 IDX_REPORT_CODE = 8
@@ -227,6 +264,7 @@ def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present):
 # --------------------------------- main -----------------------------------
 def main():
 
+    ensure_configs()
     st = State()
     pending = {"mode": None, "reload": False}
 

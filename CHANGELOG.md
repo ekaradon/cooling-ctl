@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] — 2026-10-04
+
+- Config self-provisioning: the daemon creates `~/config/coolingctl/`
+  with sensible defaults on first start (nothing to write before the first
+  run); existing files are never overwritten. Guarded by S32.
+- `game-floor.json` is now a single-point curve (the first point IS the
+  floor); the README example drops the confusing 120 °C padding point.
+
 ## [0.5.0] — 2026-10-04
 
 - "Plateau" vocabulary retired in favor of "floor" everywhere: config file
