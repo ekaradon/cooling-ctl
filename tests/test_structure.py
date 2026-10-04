@@ -78,7 +78,7 @@ class TestStructureQml(unittest.TestCase):
                       "(the Plasma default is SnapOnRelease)")
         self.assertNotIn("interactive: false", self.qml,
                          "the slider's internal drag must not be disabled")
-        self.assertNotIn("plateauFromFraction", self.qml,
+        self.assertNotIn("floorFromFraction", self.qml,
                          "the custom drag was replaced by snapMode SnapAlways")
         self.assertIn('visible: root.padVisible && root.mode !== "free" && root.polls > 0', self.qml,
                       "the slider must not appear before the first data point")
@@ -91,7 +91,7 @@ class TestStructureQml(unittest.TestCase):
         keyboard into moved(). qmllint misses this class of error
         ("no matching signal found for handler" is categorized
         [unqualified], muted by UnqualifiedAccess=disable in .qmllint.ini)."""
-        block = self.qml.split("id: plateauSlider", 1)[1].split("Timer {", 1)[0]
+        block = self.qml.split("id: floorSlider", 1)[1].split("Timer {", 1)[0]
         self.assertIn("onPressedChanged:", block,
                       "slider release goes through onPressedChanged")
         self.assertNotIn("onPressed:", block,
@@ -118,11 +118,11 @@ class TestStructureQml(unittest.TestCase):
                          "KSvg does not recolor symbolic SVGs here")
 
     def test_s27_slider_resilient(self):
-        """The plateau label shows the step (snapPlateau) and the slider
+        """The floor label shows the step (snapPlateau) and the slider
         periodically resynchronizes (anti-desync after a failed drag)."""
-        self.assertIn("CLogic.snapPlateau(500 + root.plateau * 27)", self.qml,
+        self.assertIn("CLogic.snapPlateau(500 + root.floor * 27)", self.qml,
                       "the resting label must show the step, not the raw computation")
-        self.assertGreaterEqual(self.qml.count("plateauSlider.value = 500 + root.plateau * 27"), 2,
+        self.assertGreaterEqual(self.qml.count("floorSlider.value = 500 + root.floor * 27"), 2,
                                 "a resync mechanism is needed beyond onPlateauChanged")
 
 

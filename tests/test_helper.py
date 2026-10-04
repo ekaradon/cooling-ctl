@@ -2,10 +2,10 @@
 """Tests of the coolingctl.sh helper — the plasmoid's interface contract.
 
 Covered specs:
-  S6  `status` : ligne à 9 champs tctl|fan1|fan2|pad_rpm|mode|plateau_pct|gpu|cpu|gpu_pct
+  S6  `status` : ligne à 9 champs tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct
       mode passthrough: silent|game|free (fallback silent);
-      pad_rpm and plateau come from the state file; absent -> -1
-  S7  `set-plateau N`: writes the plateau into the json (clamped 0..100),
+      pad_rpm and floor come from the state file; absent -> -1
+  S7  `set-floor N`: writes the floor into the json (clamped 0..100),
       bounded, invalid rejected; sends SIGHUP to the daemon
   S8  `mode X`: SIGUSR1 (game), SIGUSR2 (silent), SIGWINCH (free);
       invalid mode rejected
@@ -33,7 +33,7 @@ class FakeEnv:
         self.xdg = os.path.join(self.tmp, "xdg")
         self.fakebin = os.path.join(self.tmp, "bin")
         self.sysctl_log = os.path.join(self.tmp, "systemctl.log")
-        self.gaming_json = os.path.join(self.tmp, "gaming-plateau.json")
+        self.gaming_json = os.path.join(self.tmp, "game-floor.json")
         os.makedirs(self.xdg)
         os.makedirs(self.fakebin)
         # canonical config directory, like a real installation
@@ -78,7 +78,7 @@ class FakeEnv:
 
     def env_par_defaut(self):
         """Environment WITHOUT overrides: the helper must resolve
-        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json on its own."""
+        XDG_CONFIG_HOME/coolingctl/game-floor.json on its own."""
         e = self.env
         e.pop("COOLINGCTL_GAMING_JSON")
         return e
@@ -91,7 +91,7 @@ class FakeEnv:
         return subprocess.run(["sh", HELPER, *args], env=self.env,
                               capture_output=True, text=True, timeout=10)
 
-    def plateau(self):
+    def floor(self):
         with open(self.gaming_json) as f:
             return json.load(f)["curve"][0]["percent"]
 
@@ -110,8 +110,8 @@ class TestStatus(unittest.TestCase):
     """S6: status format and mapping."""
 
     def test_9_champs(self):
-        env = FakeEnv("mode=silent\ntemp=60.0\nplateau_pct=30.0\n"
-                      "plateau_rpm=1300\nrpm_cmd=500\nrpm_reported=500\npad_present=1\n")
+        env = FakeEnv("mode=silent\ntemp=60.0\nfloor_pct=30.0\n"
+                      "floor_rpm=1300\nrpm_cmd=500\nrpm_reported=500\npad_present=1\n")
         try:
             r = env.run("status")
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -119,7 +119,7 @@ class TestStatus(unittest.TestCase):
             self.assertEqual(len(champs), 9, champs)
             self.assertEqual(champs[3], "500")        # pad_rpm
             self.assertEqual(champs[4], "silent")  # curve -> silent
-            self.assertEqual(champs[5], "30.0")        # plateau
+            self.assertEqual(champs[5], "30.0")        # floor
             self.assertRegex(champs[7], r"^[0-9]+$")    # charge CPU 0..100
             self.assertRegex(champs[8], r"^-?[0-9]+$")  # charge GPU (-1 si absente)
         finally:
@@ -127,7 +127,7 @@ class TestStatus(unittest.TestCase):
 
     def test_mode_game_and_free(self):
         for mode, attendu in [("game", "game"), ("free", "free")]:
-            env = FakeEnv(f"mode={mode}\nrpm_reported=1300\nplateau_pct=30\n")
+            env = FakeEnv(f"mode={mode}\nrpm_reported=1300\nfloor_pct=30\n")
             try:
                 champs = env.run("status").stdout.strip().split("|")
                 self.assertEqual(champs[4], attendu)
@@ -168,14 +168,14 @@ class TestStatus(unittest.TestCase):
 
     def test_chemins_par_defaut(self):
         """S17: without env overrides, the helper resolves
-        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (canonical names)."""
+        XDG_CONFIG_HOME/coolingctl/game-floor.json (canonical names)."""
         env = FakeEnv()
         try:
             canonique = os.path.join(env.env["XDG_CONFIG_HOME"],
-                                     "coolingctl", "gaming-plateau.json")
+                                     "coolingctl", "game-floor.json")
             # an existing installation: the config file is already there
             shutil.copy(env.gaming_json, canonique)
-            r = env.run_par_defaut("set-plateau", "25")
+            r = env.run_par_defaut("set-floor", "25")
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertTrue(os.path.exists(canonique),
                             f"the helper did not resolve the default path: {canonique}")
@@ -186,14 +186,14 @@ class TestStatus(unittest.TestCase):
 
 
 class TestSetPlateau(unittest.TestCase):
-    """S7: plateau write + SIGHUP."""
+    """S7: floor write + SIGHUP."""
 
     def test_ecriture_et_signal(self):
         env = FakeEnv()
         try:
-            r = env.run("set-plateau", "40")
+            r = env.run("set-floor", "40")
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(env.plateau(), 40)
+            self.assertEqual(env.floor(), 40)
             self.assertIn("--user kill --signal=SIGHUP coolingctl.service",
                           env.systemctl_calls())
         finally:
@@ -202,21 +202,21 @@ class TestSetPlateau(unittest.TestCase):
     def test_clamp(self):
         env = FakeEnv()
         try:
-            env.run("set-plateau", "2")
-            self.assertEqual(env.plateau(), 2)   # 0..100 valide : plus de clamp a 5
-            self.assertEqual(env.run("set-plateau", "0").returncode, 0)
-            self.assertEqual(env.plateau(), 0)   # plancher 0 % = 500 RPM
-            self.assertNotEqual(env.run("set-plateau", "-3").returncode, 0)  # non numerique : rejete
-            env.run("set-plateau", "150")
-            self.assertEqual(env.plateau(), 100)
+            env.run("set-floor", "2")
+            self.assertEqual(env.floor(), 2)   # 0..100 valide : plus de clamp a 5
+            self.assertEqual(env.run("set-floor", "0").returncode, 0)
+            self.assertEqual(env.floor(), 0)   # plancher 0 % = 500 RPM
+            self.assertNotEqual(env.run("set-floor", "-3").returncode, 0)  # non numerique : rejete
+            env.run("set-floor", "150")
+            self.assertEqual(env.floor(), 100)
         finally:
             env.cleanup()
 
     def test_invalide(self):
         env = FakeEnv()
         try:
-            self.assertNotEqual(env.run("set-plateau", "abc").returncode, 0)
-            self.assertNotEqual(env.run("set-plateau").returncode, 0)
+            self.assertNotEqual(env.run("set-floor", "abc").returncode, 0)
+            self.assertNotEqual(env.run("set-floor").returncode, 0)
         finally:
             env.cleanup()
 

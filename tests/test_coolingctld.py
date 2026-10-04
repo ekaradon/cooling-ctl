@@ -5,7 +5,7 @@ Covered specs:
   S1  HID protocol byte-for-byte identical to the reference controller
   S2  % -> RPM conversion: 500 + pct*27, steps of 50, clamp [0, 100]
   S3  linear curve interpolation (bounds = extreme points)
-  S4  curve JSON loading (sorted curve, plateau = first point)
+  S4  curve JSON loading (sorted curve, floor = first point)
   S5  key=value state file, complete fields, atomic writes
 """
 import importlib.util
@@ -111,19 +111,19 @@ class TestConfig(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    def test_load_plateau(self):
+    def test_load_floor(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump({"curve": [{"temp": 0, "percent": 30},
                                  {"temp": 120, "percent": 30}]}, f)
             path = f.name
         try:
-            self.assertEqual(d.State.load_plateau(path), 30.0)
+            self.assertEqual(d.State.load_floor(path), 30.0)
         finally:
             os.unlink(path)
 
     def test_fichiers_absents(self):
         self.assertEqual(d.State.load_curve("/inexistant.json"), [])
-        self.assertIsNone(d.State.load_plateau("/inexistant.json"))
+        self.assertIsNone(d.State.load_floor("/inexistant.json"))
 
 
 class TestStatusFile(unittest.TestCase):
@@ -132,7 +132,7 @@ class TestStatusFile(unittest.TestCase):
     def _write(self, **kw):
         tmpdir = tempfile.mkdtemp()
         d.STATUS_FILE = os.path.join(tmpdir, "coolingctl.status")
-        defaults = dict(mode="game", temp=63.5, plateau_pct=30.0,
+        defaults = dict(mode="game", temp=63.5, floor_pct=30.0,
                         rpm_cmd=1300, rpm_rep=1300, pad_present=True)
         defaults.update(kw)
         d.write_status(**defaults)
@@ -143,8 +143,8 @@ class TestStatusFile(unittest.TestCase):
     def test_format_complet(self):
         tmpdir, content = self._write()
         try:
-            for attendu in ["mode=game", "temp=63.5", "plateau_pct=30.0",
-                           "plateau_rpm=1300", "rpm_cmd=1300",
+            for attendu in ["mode=game", "temp=63.5", "floor_pct=30.0",
+                           "floor_rpm=1300", "rpm_cmd=1300",
                            "rpm_reported=1300", "pad_present=1"]:
                 self.assertIn(attendu, content)
             self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicité

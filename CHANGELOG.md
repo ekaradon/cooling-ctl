@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] — 2026-10-04
+
+- "Plateau" vocabulary retired in favor of "floor" everywhere: config file
+  is now `game-floor.json`, status fields are `floor_pct`/`floor_rpm`, the
+  CLI verb is `set-floor`. Breaking: rename your config file (fields
+  unchanged).
+- README rewritten, much shorter: what it does, install, setup, credits —
+  details live in AGENTS.md.
+
 ## [0.4.1] — 2026-10-04
 
 - Fix: the compact cat was invisible in the dark theme — KSvg does not

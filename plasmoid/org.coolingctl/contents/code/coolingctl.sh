@@ -5,8 +5,8 @@
 #
 # Commandes :
 #   status               -> 9-field line
-#                           "tctl|fan1|fan2|pad_rpm|mode|plateau_pct|gpu|cpu|gpu_pct"
-#   set-plateau <pct>    -> writes the plateau + SIGHUP (applied hot)
+#                           "tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct"
+#   set-floor <pct>    -> writes the floor + SIGHUP (applied hot)
 #   mode <game|silent|free> -> SIGUSR1/SIGUSR2/SIGWINCH
 #
 # Environment overrides (tests / other machines):
@@ -17,7 +17,7 @@ STATUS_FILE="${COOLINGCTL_STATUS_FILE:-${XDG_RUNTIME_DIR:-/run/user/1000}/coolin
 CPU_STATE="${COOLINGCTL_CPU_STATE:-${XDG_RUNTIME_DIR:-/run/user/1000}/coolingctl.cpu}"
 DRM_DIR="${COOLINGCTL_DRM_DIR:-/sys/class/drm}"
 CONFIG_DIR="${COOLINGCTL_CURVES_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/coolingctl}"
-GAMING_JSON="${COOLINGCTL_GAMING_JSON:-$CONFIG_DIR/gaming-plateau.json}"
+GAMING_JSON="${COOLINGCTL_GAMING_JSON:-$CONFIG_DIR/game-floor.json}"
 
 hwmon_by_name() {
     dirname "$(grep -lx "$1" /sys/class/hwmon/hwmon*/name 2>/dev/null | head -1)"
@@ -97,7 +97,7 @@ cmd_status() {
     MODE=$(stget mode)
     [ "$MODE" = "game" ] || [ "$MODE" = "free" ] || MODE=silent
     PAD_RPM=$(stget rpm_reported)
-    PLATEAU=$(stget plateau_pct)
+    PLATEAU=$(stget floor_pct)
     [ -z "$PAD_RPM" ] && PAD_RPM=-1
     [ -z "$PLATEAU" ] && PLATEAU=-1
 
@@ -106,7 +106,7 @@ cmd_status() {
     echo "${TCTL:--1}|${F1:--1}|${F2:--1}|${PAD_RPM}|${MODE}|${PLATEAU}|${GPU}|${CPU}|${GPUPCT}"
 }
 
-cmd_set_plateau() {
+cmd_set_floor() {
     PCT="$1"
     case "$PCT" in
         ''|*[!0-9]*) echo "pct invalide"; exit 1 ;;
@@ -130,7 +130,7 @@ cmd_mode() {
 
 case "$1" in
     status)       cmd_status ;;
-    set-plateau)  cmd_set_plateau "$2" ;;
+    set-floor)  cmd_set_floor "$2" ;;
     mode)         cmd_mode "$2" ;;
-    *)            echo "usage: $0 status|set-plateau <pct>|mode <game|silent|free>"; exit 1 ;;
+    *)            echo "usage: $0 status|set-floor <pct>|mode <game|silent|free>"; exit 1 ;;
 esac

@@ -4,20 +4,20 @@
 Single owner of the HID device, internal modes, signal-based switching
 without ever restarting the process:
 
-  SIGUSR1 -> game mode  (fixed plateau held in daemon memory)
+  SIGUSR1 -> game mode  (fixed floor held in daemon memory)
   SIGUSR2 -> silent mode (silent-curve.json curve)
   SIGWINCH-> free mode  (releases control: off report, pad firmware)
-  SIGHUP  -> reload config files (plateau changed, mode unchanged)
-             NB: the plateau used by game mode is the in-memory one;
+  SIGHUP  -> reload config files (floor changed, mode unchanged)
+             NB: the floor used by game mode is the in-memory one;
              any change to the json therefore goes through SIGHUP
 
 Data:
   curve   : $XDG_CONFIG_HOME/coolingctl/silent-curve.json
-  plateau : $XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (first point)
+  floor : $XDG_CONFIG_HOME/coolingctl/game-floor.json (first point)
 
 State published (atomically, every loop):
   $XDG_RUNTIME_DIR/coolingctl.status : lignes cle=valeur
-  mode, temp, plateau_pct, plateau_rpm, rpm_cmd, rpm_reported, pad_present
+  mode, temp, floor_pct, floor_rpm, rpm_cmd, rpm_reported, pad_present
 
 Clean stop (SIGTERM): sends the "off" report to the pad (back to firmware
 behavior), like the historical controller.
@@ -54,7 +54,7 @@ XDG_CONFIG = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
 CURVES_DIR = os.environ.get("COOLINGCTL_CURVES_DIR",
                             os.path.join(XDG_CONFIG, "coolingctl"))
 CURVE_FILE = os.path.join(CURVES_DIR, "silent-curve.json")
-GAMING_FILE = os.path.join(CURVES_DIR, "gaming-plateau.json")
+GAMING_FILE = os.path.join(CURVES_DIR, "game-floor.json")
 STATUS_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), "coolingctl.status")
 
@@ -155,16 +155,16 @@ class State:
     def __init__(self):
         self.mode = "silent"        # silent | game | free
         self.curve = []              # [(temp, percent)]
-        self.plateau_pct = 30
+        self.floor_pct = 30
         self.last_rpm = None
         self.read_fails = 0
         self.reload()
 
     def reload(self):
         self.curve = self.load_curve(CURVE_FILE)
-        pct = self.load_plateau(GAMING_FILE)
+        pct = self.load_floor(GAMING_FILE)
         if pct is not None:
-            self.plateau_pct = pct
+            self.floor_pct = pct
 
     @staticmethod
     def load_curve(path):
@@ -174,17 +174,17 @@ class State:
                        for p in json.load(f)["curve"]]
             return sorted(pts)
         except Exception as e:
-            print(f"unreadable curve ({e}), plateau seul disponible", file=sys.stderr)
+            print(f"unreadable curve ({e}), floor seul disponible", file=sys.stderr)
             return []
 
     @staticmethod
-    def load_plateau(path):
+    def load_floor(path):
         try:
             with open(path) as f:
                 pts = json.load(f)["curve"]
                 return float(pts[0]["percent"])
         except Exception as e:
-            print(f"unreadable plateau ({e})", file=sys.stderr)
+            print(f"unreadable floor ({e})", file=sys.stderr)
             return None
 
 
@@ -208,14 +208,14 @@ def pct_to_rpm(pct):
     return int(round(rpm / 50.0)) * 50
 
 
-def write_status(mode, temp, plateau_pct, rpm_cmd, rpm_rep, pad_present):
+def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present):
     tmp = STATUS_FILE + ".tmp"
     try:
         with open(tmp, "w") as f:
             f.write(f"mode={mode}\n")
             f.write(f"temp={temp if temp is not None else -1}\n")
-            f.write(f"plateau_pct={plateau_pct}\n")
-            f.write(f"plateau_rpm={pct_to_rpm(plateau_pct)}\n")
+            f.write(f"floor_pct={floor_pct}\n")
+            f.write(f"floor_rpm={pct_to_rpm(floor_pct)}\n")
             f.write(f"rpm_cmd={rpm_cmd if rpm_cmd is not None else -1}\n")
             f.write(f"rpm_reported={rpm_rep if rpm_rep is not None else -1}\n")
             f.write(f"pad_present={1 if pad_present else 0}\n")
@@ -280,7 +280,7 @@ def main():
             pending["reload"] = False
             st.reload()
             st.last_rpm = None
-            print(f"config reloaded (plateau {st.plateau_pct}%)", flush=True)
+            print(f"config reloaded (floor {st.floor_pct}%)", flush=True)
 
         # CPU sensor (re-resolve if it disappears)
         temp = read_temp(k10) if k10 else None
@@ -292,7 +292,7 @@ def main():
         pct = None
         if temp is not None and st.mode != "free":
             if st.mode == "game":
-                pct = st.plateau_pct
+                pct = st.floor_pct
             else:
                 pct = interpolate(st.curve, temp)
         rpm = pct_to_rpm(pct) if pct is not None else None
@@ -335,7 +335,7 @@ def main():
             else:
                 st.read_fails = 0
                 last_rep = rep
-        write_status(st.mode, temp, st.plateau_pct, st.last_rpm, last_rep, pad_present)
+        write_status(st.mode, temp, st.floor_pct, st.last_rpm, last_rep, pad_present)
 
         time.sleep(INTERVAL)
 

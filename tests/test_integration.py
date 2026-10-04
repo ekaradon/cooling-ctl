@@ -6,7 +6,7 @@ Skipped when the daemon is not running (CI without the machine).
 Covered specs:
   S9  the state file is published and schema-valid continuously
   S10 mode switching by signal without a restart (NRestarts unchanged)
-  S11 plateau modified hot without restarting the daemon
+  S11 floor modified hot without restarting the daemon
 """
 import os
 import re
@@ -18,8 +18,8 @@ STATUS_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"),
                            "coolingctl.status")
 GAMING_JSON = os.path.join(os.environ.get(
     "XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-    "coolingctl", "gaming-plateau.json")
-KEYS = {"mode", "temp", "plateau_pct", "plateau_rpm",
+    "coolingctl", "game-floor.json")
+KEYS = {"mode", "temp", "floor_pct", "floor_rpm",
         "rpm_cmd", "rpm_reported", "pad_present"}
 
 
@@ -61,23 +61,23 @@ class TestIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.etat_initial = lire_status()
-        cls.plateau_initial = cls._lire_plateau()
+        cls.floor_initial = cls._lire_floor()
 
     @classmethod
     def tearDownClass(cls):
         # full restoration of the initial state
-        plateau = cls.plateau_initial
+        floor = cls.floor_initial
         with open(GAMING_JSON) as f:
             contenu = f.read()
         with open(GAMING_JSON, "w") as f:
-            f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {plateau}', contenu))
+            f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {floor}', contenu))
         signal_daemon("SIGHUP")  # resync the daemon with the restored file
         mode = cls.etat_initial["mode"]
         sig = {"game": "SIGUSR1", "silent": "SIGUSR2", "free": "SIGWINCH"}[mode]
         signal_daemon(sig)
 
     @staticmethod
-    def _lire_plateau():
+    def _lire_floor():
         with open(GAMING_JSON) as f:
             contenu = f.read()
         m = re.search(r'"percent": *([0-9]+)', contenu)
@@ -94,7 +94,7 @@ class TestIntegration(unittest.TestCase):
         self.assertTrue(KEYS.issubset(fields), fields)
         self.assertIn(fields["mode"], {"silent", "game", "free"})
         float(fields["temp"])
-        float(fields["plateau_pct"])
+        float(fields["floor_pct"])
         int(fields["rpm_cmd"])
         int(fields["rpm_reported"])
         self.assertIn(fields["pad_present"], {"0", "1"})
@@ -109,7 +109,7 @@ class TestIntegration(unittest.TestCase):
                         "silent mode not reached")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
-    def test_s11_plateau_a_chaud(self):
+    def test_s11_floor_a_chaud(self):
         n0 = self._nrestarts()
         with open(GAMING_JSON) as f:
             contenu = f.read()
@@ -117,8 +117,8 @@ class TestIntegration(unittest.TestCase):
             f.write(re.sub(r'"percent": *[0-9]*', '"percent": 33', contenu))
         signal_daemon("SIGHUP")
         self.assertTrue(
-            attendre(lambda: lire_status()["plateau_rpm"] == "1400"),
-            f"plateau_rpm={lire_status().get('plateau_rpm')} != 1400")
+            attendre(lambda: lire_status()["floor_rpm"] == "1400"),
+            f"floor_rpm={lire_status().get('floor_rpm')} != 1400")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
 

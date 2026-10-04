@@ -17,7 +17,7 @@ PlasmoidItem {
     property real fan: -1
     property real padRpm: -1
     property string mode: "?"
-    property real plateau: -1
+    property real floor: -1
     property real cpu: 0
     property real gpuLoad: -1
     property int polls: 0
@@ -68,7 +68,7 @@ PlasmoidItem {
         root.fan = (f1 + f2) / 2
         root.padRpm = parseFloat(p[3])
         root.mode = p[4]
-        root.plateau = parseFloat(p[5])
+        root.floor = parseFloat(p[5])
         root.gpu = parseFloat(p[6])
         root.cpu = p.length > 7 ? parseFloat(p[7]) : 0
         root.gpuLoad = p.length > 8 ? parseFloat(p[8]) : -1
@@ -392,10 +392,10 @@ PlasmoidItem {
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.Label {
                     text: {
-                        if (root.sliderBusy || plateauSlider.pressed)
-                            return CLogic.snapPlateau(plateauSlider.value) + " RPM …"
-                        return root.plateau >= 0
-                                ? CLogic.snapPlateau(500 + root.plateau * 27) + " RPM · " + Math.round(root.plateau) + " %"
+                        if (root.sliderBusy || floorSlider.pressed)
+                            return CLogic.snapPlateau(floorSlider.value) + " RPM …"
+                        return root.floor >= 0
+                                ? CLogic.snapPlateau(500 + root.floor * 27) + " RPM · " + Math.round(root.floor) + " %"
                                 : "—"
                     }
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
@@ -403,7 +403,7 @@ PlasmoidItem {
                 }
             }
             PlasmaComponents.Slider {
-                id: plateauSlider
+                id: floorSlider
                 // only shows once the first data point arrives (no flash at position 0)
                 visible: root.padVisible && root.mode !== "free" && root.polls > 0
                 Layout.fillWidth: true
@@ -411,7 +411,7 @@ PlasmoidItem {
                 from: 500
                 to: 3200
                 stepSize: 300
-                enabled: root.plateau >= 0
+                enabled: root.floor >= 0
                 // handle snapped while dragging, the pattern of the Animation speed
                 // slider of Plasma's landing page (kcms/landingpage): SnapAlways
                 // snaps the position onto the step grid on every move.
@@ -437,8 +437,8 @@ PlasmoidItem {
                 }
 
                 function commitPlateau() {
-                    const cible = CLogic.snapPlateau(plateauSlider.value)
-                    root.exec(root.helper + " set-plateau " + Math.round((cible - 500) / 27))
+                    const cible = CLogic.snapPlateau(floorSlider.value)
+                    root.exec(root.helper + " set-floor " + Math.round((cible - 500) / 27))
                 }
 
                 Timer {
@@ -450,20 +450,20 @@ PlasmoidItem {
                 Connections {
                     target: root
                     function onPlateauChanged() {
-                        if (!root.sliderBusy && !plateauSlider.pressed && root.plateau >= 0)
-                            plateauSlider.value = 500 + root.plateau * 27
+                        if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
+                            floorSlider.value = 500 + root.floor * 27
                     }
                 }
 
                 // resync: if a drag failed to commit or was interrupted,
-                // the slider snaps back to the real plateau within 5 s
+                // the slider snaps back to the real floor within 5 s
                 Timer {
                     interval: 5000
                     repeat: true
                     running: true
                     onTriggered: {
-                        if (!root.sliderBusy && !plateauSlider.pressed && root.plateau >= 0)
-                            plateauSlider.value = 500 + root.plateau * 27
+                        if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
+                            floorSlider.value = 500 + root.floor * 27
                     }
                 }
             }

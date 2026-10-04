@@ -40,7 +40,7 @@ Rules that follow from this shape:
   value (the chart shows « collecte des données… » before the first poll),
   never to an error popup.
 - Helper `status` contract: 9 pipe-separated fields
-  `tctl|fan1|fan2|pad_rpm|mode|plateau_pct|gpu|cpu|gpu_pct`. The plasmoid
+  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct`. The plasmoid
   parses 9 with a fallback to 7. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
 
@@ -62,7 +62,7 @@ Rules that follow from this shape:
 - Python: stdlib only (plus `hid`). The daemon must run on the plain system
   interpreter, no venv.
 - Configs: JSON under `~/.config/coolingctl/` (XDG). The daemon never writes
-  them; the helper's `set-plateau` rewrites `gaming-plateau.json` then SIGHUPs.
+  them; the helper's `set-floor` rewrites `game-floor.json` then SIGHUPs.
 - License: GPL-2.0-or-later. Imported third-party art/code must be compatible
   and credited in README + the file header (see the cat frames:
   CatWalk → RunCat lineage).
