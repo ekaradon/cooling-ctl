@@ -33,6 +33,16 @@ makepkg -si
 
 Other distributions: copy the same four pieces to the equivalent paths.
 
+## Upgrading
+
+pacman never restarts user services. After an upgrade the daemon and the
+plasmoid keep running the old code until restarted:
+
+```sh
+systemctl --user daemon-reload && systemctl --user restart coolingctl.service
+systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
+```
+
 ## Setup
 
 ```sh
