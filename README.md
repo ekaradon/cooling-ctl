@@ -33,21 +33,13 @@ makepkg -si
 
 Other distributions: copy the same four pieces to the equivalent paths.
 
-## Upgrading
-
-pacman never restarts user services. After an upgrade the daemon and the
-plasmoid keep running the old code until restarted:
-
-```sh
-systemctl --user daemon-reload && systemctl --user restart coolingctl.service
-systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
-```
-
 ## Setup
 
 ```sh
 systemctl --user enable --now coolingctl.service
 ```
+
+Add the widget: right-click the panel → *Add widgets* → **Cooling Control**.
 
 The daemon creates `~/.config/coolingctl/` with sensible defaults on first
 start — edit them freely, `SIGHUP` reloads. Reference:
@@ -111,6 +103,16 @@ Live state is published atomically every 3 s in
 The helper `coolingctl.sh status` prints
 `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct`; actions:
 `set-floor <pct>`, `mode <game|silent|free>`.
+
+## Upgrading
+
+pacman never restarts user services. After an upgrade the daemon and the
+plasmoid keep running the old code until restarted:
+
+```sh
+systemctl --user daemon-reload && systemctl --user restart coolingctl.service
+systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
+```
 
 ## Development
 
