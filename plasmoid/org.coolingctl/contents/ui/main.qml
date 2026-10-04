@@ -12,7 +12,7 @@ import "compact-logic.js" as CLogic
 PlasmoidItem {
     id: root
 
-    // etat courant
+    // current state
     property real tctl: -1
     property real gpu: -1
     property real fan: -1
@@ -22,13 +22,13 @@ PlasmoidItem {
     property real cpu: 0
     property real gpuLoad: -1
     property int polls: 0
-    property bool sliderBusy: false   // vrai pendant le drag + 4 s apres (verrou anti snap-back)
+    property bool sliderBusy: false   // true during the drag + 4 s after (anti snap-back lock)
 
-    // pad visible tant qu'aucune mesure recue (evite le flash au demarrage),
-    // puis uniquement si le pad repond
+    // pad visible until the first sample arrives (avoids the startup flash),
+    // then only if the pad answers
     readonly property bool padVisible: root.polls === 0 || root.padRpm >= 0
 
-    // historique : { tctl, gpu, fan, pad }
+    // history: { tctl, gpu, fan, pad }
     property var history: []
     readonly property int maxPoints: 120
     readonly property real tempMax: 100
@@ -37,7 +37,7 @@ PlasmoidItem {
 
     readonly property string helper: Qt.resolvedUrl("../code/coolingctl.sh").toString().replace("file://", "")
 
-    // identite de serie (stable sur les deux themes Breeze)
+    // series colors (stable across both Breeze themes)
     readonly property color colCpu: "#e05a45"
     readonly property color colGpu: "#9a6ee0"
     readonly property color colFan: "#3fb96a"
@@ -50,7 +50,7 @@ PlasmoidItem {
         return Kirigami.Theme.negativeTextColor
     }
 
-    // moyenne d'une serie sur la fenetre visible du graphique (jusqu'a 4 min)
+    // average of a series over the chart's visible window (up to 4 min)
     function avgOf(key) {
         const h = root.history
         let sum = 0, n = 0
@@ -108,7 +108,7 @@ PlasmoidItem {
             anchors.margins: Kirigami.Units.gridUnit * 1.5
             spacing: Kirigami.Units.largeSpacing
 
-            // -- entete : titre + badge mode --------------------------------
+            // -- header: title + mode badge --------------------------------
             RowLayout {
                 Layout.fillWidth: true
                 Layout.bottomMargin: Kirigami.Units.smallSpacing
@@ -127,8 +127,8 @@ PlasmoidItem {
                     radius: height / 2
                     implicitHeight: modeLabel.implicitHeight + 2 * Kirigami.Units.smallSpacing
                     implicitWidth: modeLabel.implicitWidth + 3 * Kirigami.Units.smallSpacing
-                    readonly property bool jeu: root.mode === "jeu"
-                    color: jeu
+                    readonly property bool isGame: root.mode === "game"
+                    color: isGame
                            ? Qt.rgba(Kirigami.Theme.highlightColor.r,
                                      Kirigami.Theme.highlightColor.g,
                                      Kirigami.Theme.highlightColor.b, 0.25)
@@ -137,10 +137,10 @@ PlasmoidItem {
                     PlasmaComponents.Label {
                         id: modeLabel
                         anchors.centerIn: parent
-                        text: root.mode === "jeu" ? i18n("MODE JEU")
-                         : root.mode === "libre" ? i18n("LIBRE")
-                         : i18n("COURBE SILENCIEUSE")
-                        color: parent.jeu ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                        text: root.mode === "game" ? i18n("GAME MODE")
+                         : root.mode === "free" ? i18n("FREE")
+                         : i18n("SILENT CURVE")
+                        color: parent.isGame ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
                         font.pointSize: Application.font.pointSize * 0.75
                         font.letterSpacing: 1
                         font.weight: Font.DemiBold
@@ -148,7 +148,7 @@ PlasmoidItem {
                 }
             }
 
-            // -- zone stats : heros CPU + GPU, secondaires RPM ----------------
+            // -- stats: CPU + GPU heroes, RPM secondary ----------------
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing * 3
@@ -164,7 +164,7 @@ PlasmoidItem {
                         color: root.colCpu
                     }
                     PlasmaComponents.Label {
-                        text: root.avgOf("tctl") >= 0 ? i18n("%1° moy.", Math.round(root.avgOf("tctl"))) : ""
+                        text: root.avgOf("tctl") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("tctl"))) : ""
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.75)
                         font.weight: Font.Bold
                         color: root.colCpu
@@ -187,7 +187,7 @@ PlasmoidItem {
                         color: root.colGpu
                     }
                     PlasmaComponents.Label {
-                        text: root.avgOf("gpu") >= 0 ? i18n("%1° moy.", Math.round(root.avgOf("gpu"))) : ""
+                        text: root.avgOf("gpu") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("gpu"))) : ""
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.75)
                         font.weight: Font.Bold
                         color: root.colGpu
@@ -208,7 +208,7 @@ PlasmoidItem {
                     rowSpacing: Kirigami.Units.smallSpacing
                     Layout.alignment: Qt.AlignVCenter
 
-                    PlasmaComponents.Label { text: i18n("Ventilos"); font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
+                    PlasmaComponents.Label { text: i18n("Laptop fans"); font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
                     PlasmaComponents.Label {
                         Layout.alignment: Qt.AlignRight
                         text: root.fan >= 0 ? Math.round(root.fan) : "—"
@@ -226,7 +226,7 @@ PlasmoidItem {
                 }
             }
 
-            // -- graphique ----------------------------------------------------
+            // -- chart --------------------------------------------------------
             Canvas {
                 id: chart
                 antialiasing: true
@@ -250,7 +250,7 @@ PlasmoidItem {
                     const yTemp = v => mT + ch * (1 - (clamp(v, root.tempMin, root.tempMax) - root.tempMin) / (root.tempMax - root.tempMin))
                     const yRpm = v => mT + ch * (1 - clamp(v, 0, root.rpmMax) / root.rpmMax)
 
-                    // grille discrete : lignes de reference uniquement
+                    // discrete grid: reference lines only
                     ctx.globalAlpha = 0.35
                     ctx.strokeStyle = Kirigami.Theme.disabledTextColor
                     ctx.lineWidth = 1
@@ -266,14 +266,14 @@ PlasmoidItem {
                         const y = yRpm(r)
                         ctx.fillText(r === 0 ? "0" : (r / 1000) + "k", W - mR + 6, y + 3)
                     }
-                    // titres d'axes
+                    // axis titles
                     ctx.font = 'bold 8px ' + Application.font.family
                     ctx.fillText("°C", 2, 9)
                     ctx.textAlign = "right"
                     ctx.fillText("RPM", W - 4, 9)
                     ctx.textAlign = "left"
                     ctx.font = '9px ' + Application.font.family
-                    // bande de seuil : zone > 93 degres teintee
+                    // threshold band: area above 93 degrees tinted
                     const y93 = yTemp(93)
                     ctx.fillStyle = Qt.rgba(root.colCpu.r, root.colCpu.g, root.colCpu.b, 0.10)
                     ctx.fillRect(mL, yTemp(root.tempMax), cw, y93 - yTemp(root.tempMax))
@@ -288,7 +288,7 @@ PlasmoidItem {
                         ctx.fillStyle = Kirigami.Theme.disabledTextColor
                         ctx.font = 'italic ' + Application.font.pixelSize + 'px ' + Application.font.family
                         ctx.textAlign = "center"
-                        ctx.fillText(i18n("collecte des données…"), mL + cw / 2, mT + ch / 2)
+                        ctx.fillText(i18n("collecting data…"), mL + cw / 2, mT + ch / 2)
                         ctx.textAlign = "left"
                         ctx.globalAlpha = 1
                         return
@@ -315,7 +315,7 @@ PlasmoidItem {
                         }
                         ctx.stroke()
                         if (lastV < 0) return
-                        // point + valeur courante en bout de ligne (label resolu plus tard, anti-collision)
+                        // endpoint dot + current value (label resolved later, anti-collision)
                         ctx.fillStyle = color
                         ctx.beginPath()
                         ctx.arc(lastX, lastY, 2.5, 0, 2 * Math.PI)
@@ -328,7 +328,7 @@ PlasmoidItem {
                     drawSeries("gpu", root.colGpu, yTemp, v => Math.round(v) + "°")
                     drawSeries("tctl", root.colCpu, yTemp, v => Math.round(v) + "°")
 
-                    // anti-collision : espacer les labels superposes
+                    // anti-collision: spread overlapping labels
                     endLabels.sort((a, b) => a.y - b.y)
                     let prevY = -99
                     for (const lbl of endLabels) {
@@ -344,7 +344,7 @@ PlasmoidItem {
                 }
             }
 
-            // -- separateur + controles ---------------------------------------
+            // -- separator + controls ---------------------------------------
             Rectangle {
                 visible: root.padVisible
                 Layout.fillWidth: true
@@ -358,35 +358,35 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Layout.topMargin: Kirigami.Units.smallSpacing
                 PlasmaComponents.Label {
-                    text: i18n("Contrôle du pad")
+                    text: i18n("Pad control")
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                     color: Kirigami.Theme.disabledTextColor
                 }
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.Switch {
-                    checked: root.mode !== "libre"
-                    onToggled: root.exec(root.helper + " mode " + (checked ? "silencieux" : "libre"))
+                    checked: root.mode !== "free"
+                    onToggled: root.exec(root.helper + " mode " + (checked ? "silent" : "free"))
                 }
             }
             RowLayout {
-                visible: root.padVisible && root.mode !== "libre"
+                visible: root.padVisible && root.mode !== "free"
                 Layout.fillWidth: true
                 PlasmaComponents.Label {
-                    text: i18n("Mode jeu")
+                    text: i18n("Game mode")
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                     color: Kirigami.Theme.disabledTextColor
                 }
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.Switch {
-                    checked: root.mode === "jeu"
-                    onToggled: root.exec(root.helper + " mode " + (checked ? "jeu" : "silencieux"))
+                    checked: root.mode === "game"
+                    onToggled: root.exec(root.helper + " mode " + (checked ? "game" : "silent"))
                 }
             }
             RowLayout {
-                visible: root.padVisible && root.mode !== "libre"
+                visible: root.padVisible && root.mode !== "free"
                 Layout.fillWidth: true
                 PlasmaComponents.Label {
-                    text: i18n("Plateau mode jeu")
+                    text: i18n("Game mode minimum RPM")
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                     color: Kirigami.Theme.disabledTextColor
                 }
@@ -405,24 +405,24 @@ PlasmoidItem {
             }
             PlasmaComponents.Slider {
                 id: plateauSlider
-                // n'apparait qu'une fois la premiere donnee recue (pas de flash a la position 0)
-                visible: root.padVisible && root.mode !== "libre" && root.polls > 0
+                // only shows once the first data point arrives (no flash at position 0)
+                visible: root.padVisible && root.mode !== "free" && root.polls > 0
                 Layout.fillWidth: true
                 Layout.bottomMargin: Kirigami.Units.smallSpacing
                 from: 500
                 to: 3200
                 stepSize: 300
                 enabled: root.plateau >= 0
-                // handle crantifie pendant le drag, pattern du slider Animation
-                // speed de la landing page Plasma (kcms/landingpage) : SnapAlways
-                // snape la position sur la grille des pas a chaque mouvement.
-                // Le default du wrapper Plasma est SnapOnRelease (glissement
-                // continu puis snap au relachement), d'ou la surcharge.
+                // handle snapped while dragging, the pattern of the Animation speed
+                // slider of Plasma's landing page (kcms/landingpage): SnapAlways
+                // snaps the position onto the step grid on every move.
+                // The Plasma wrapper default is SnapOnRelease (continuous
+                // slide then snap on release), hence the override.
                 snapMode: QQC2.Slider.SnapAlways
 
-                // NB QQC2 : Slider n'expose ni onPressed ni onReleased comme
-                // signaux (pressed est une propriete — bug vécu : handler
-                // inexistant = plasmoid entier en fallback icone settings)
+                // QQC2 note: Slider exposes neither onPressed nor onReleased as
+                // signals (pressed is a property — lived bug: a handler on a
+                // non-existent signal kills the whole plasmoid, settings-icon fallback)
                 onPressedChanged: {
                     if (pressed) {
                         root.sliderBusy = true
@@ -431,7 +431,7 @@ PlasmoidItem {
                         sliderLock.restart()
                     }
                 }
-                // molette et clavier : moved() hors drag = commit immediat
+                // wheel and keyboard: moved() outside a drag = immediate commit
                 onMoved: {
                     if (!pressed)
                         commitPlateau()
@@ -456,8 +456,8 @@ PlasmoidItem {
                     }
                 }
 
-                // resync : si un drag a echoue au commit ou a ete interrompu,
-                // le slider recolle sur le plateau reel dans les 5 s
+                // resync: if a drag failed to commit or was interrupted,
+                // the slider snaps back to the real plateau within 5 s
                 Timer {
                     interval: 5000
                     repeat: true
@@ -471,27 +471,27 @@ PlasmoidItem {
         }
     }
 
-    // Apercu panneau : GPU puis CPU (le % CPU suit, flot de lecture naturel),
-    // separateurs discrets entre groupes, chat anime a droite (charge CPU,
-    // frames CatWalk GPL-2.0+, (c) Yuri Saurov ; lignee RunCat (Takuto Nakamura)).
-    // Clic explicite : Plasma ne declenche pas l'ouverture auto chez nous,
-    // on bascule root.expanded (PlasmoidItem) a la main.
+    // Panel view: GPU then CPU (CPU % follows, natural reading flow),
+    // discrete separators between groups, animated cat on the right (CPU load,
+    // CatWalk frames GPL-2.0+, (c) Yuri Saurov; art lineage RunCat (Takuto Nakamura)).
+    // Explicit click: Plasma does not trigger auto-open for us,
+    // we flip root.expanded (PlasmoidItem) manually.
     compactRepresentation: Item {
         id: compact
         readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
         readonly property real h: Math.min(parent ? parent.height : 32, 48)
 
-        // sizing panneau (pattern thermalmonitor) : le conteneur lit Layout.*
+        // panel sizing (thermalmonitor pattern): the container reads Layout.*
         Layout.preferredWidth: vertical ? -1 : compactRow.implicitWidth
         Layout.preferredHeight: vertical ? compactRow.implicitHeight : -1
         Layout.minimumWidth: compactRow.implicitWidth
         Layout.minimumHeight: compactRow.implicitHeight
 
-        // declaration "bouton" standard (cf. DefaultCompactRepresentation du shell)
+        // standard "button" declaration (cf. the shell's DefaultCompactRepresentation)
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: i18n("Cooling Control")
-        Accessible.description: i18n("Ouvrir le panneau de refroidissement")
+        Accessible.description: i18n("Open the cooling panel")
         Accessible.onPressAction: root.expanded = !root.expanded
 
         Keys.onPressed: event => {
@@ -513,7 +513,7 @@ PlasmoidItem {
             anchors.rightMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.largeSpacing
 
-            // colonne GPU : label + temperature, charge dessous
+            // GPU column: label + temperature, load below
             ColumnLayout {
                 spacing: 0
                 Layout.alignment: Qt.AlignVCenter
@@ -546,7 +546,7 @@ PlasmoidItem {
 
             Rectangle { Layout.alignment: Qt.AlignVCenter; implicitWidth: 1; implicitHeight: compact.h * 0.55; color: Kirigami.Theme.disabledTextColor; opacity: 0.4 }
 
-            // colonne CPU : idem
+            // CPU column: same
             ColumnLayout {
                 spacing: 0
                 Layout.alignment: Qt.AlignVCenter
@@ -577,7 +577,7 @@ PlasmoidItem {
                 }
             }
 
-            // cadratin : le chat, seul
+            // em space: the cat, alone
             Rectangle { Layout.alignment: Qt.AlignVCenter; implicitWidth: 1; implicitHeight: compact.h * 0.55; color: Kirigami.Theme.disabledTextColor; opacity: 0.4 }
 
             KSvg.SvgItem {

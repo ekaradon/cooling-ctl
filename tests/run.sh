@@ -1,21 +1,21 @@
 #!/bin/sh
 # Suite de tests cooling-ctl.
-#   ./run.sh              -> tests unitaires + helper + intégration + QML + lint
-#   SKIP_INTEGRATION=1    -> ignorer les tests contre le daemon live
-#   RUN_SMOKE=1           -> + test de chargement du plasmoid (plasmawindowed,
-#                            exige une copie installée du plasmoid)
+#   ./run.sh              -> unit + helper + integration + QML + lint
+#   SKIP_INTEGRATION=1    -> skip the live-daemon tests
+#   RUN_SMOKE=1           -> + plasmoid load test (plasmawindowed,
+#                            requires an installed copy of the plasmoid)
 #   COOLINGCTL_REFERENCE=/chemin/razer-coolingpad-fancurve.py
-#                         -> + tests de parité du protocole HID (sinon sautés)
+#                         -> + HID protocol parity tests (skipped otherwise)
 #   COOLINGCTL_PYTHON=/chemin/python
-#                         -> interpréteur alternatif fournissant le module hid
+#                         -> alternate interpreter providing the hid module
 #
-# Résolution des outils portable (aucun chemin absolu) :
-#   - outils Qt 6 : via `qmake6 -query QT_HOST_BINS` (le chemin réel de
-#     l'installation Qt 6 de la machine), sinon PATH. NB : sur Arch, le
-#     `qmltestrunner` du PATH est celui de Qt 5 -> QT_HOST_BINS d'abord.
-#   - imports QML : via `qmake6 -query QT_INSTALL_QML`.
-#   - python : le python du PATH si `hid` y est disponible, sinon
-#     $COOLINGCTL_PYTHON (interpréteur arbitraire fourni explicitement).
+# Portable tool resolution (no absolute paths):
+#   - Qt 6 tools: via `qmake6 -query QT_HOST_BINS` (the real path of
+'#     the machine Qt 6 installation), else PATH. Note: on Arch, the'
+'#     the PATH `qmltestrunner` is the Qt 5 one -> QT_HOST_BINS first.'
+#   - QML imports: via `qmake6 -query QT_INSTALL_QML`.
+#   - python: the PATH python if `hid` is available there, else
+#     $COOLINGCTL_PYTHON (arbitrary interpreter given explicitly).
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$DIR")"
@@ -43,7 +43,7 @@ if python3 -c "import hid" >/dev/null 2>&1; then
 elif [ -n "${COOLINGCTL_PYTHON:-}" ] && [ -x "$COOLINGCTL_PYTHON" ]; then
     PY="$COOLINGCTL_PYTHON"
 else
-    echo "aucun interpréteur python avec le module hid (COOLINGCTL_PYTHON pour en fournir un)" >&2
+    echo "no python interpreter with the hid module (COOLINGCTL_PYTHON to provide one)" >&2
     exit 1
 fi
 
@@ -55,20 +55,20 @@ env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_helper.py" 
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_structure.py" -v || exit 1
 
 if [ "${SKIP_INTEGRATION:-0}" != "1" ]; then
-    echo "== intégration (daemon live) =="
+    echo "== integration (live daemon) =="
     env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_integration.py" -v || exit 1
 fi
 
 if [ -n "$QMLTR" ]; then
-    echo "== aperçu compact (logique QML via qmltestrunner) =="
+    echo "== compact view (QML logic via qmltestrunner) =="
     env -u LD_LIBRARY_PATH QT_QPA_PLATFORM=offscreen "$QMLTR" -input "$DIR/tst_compact.qml" 2>&1 \
         | grep -E "PASS|FAIL|Totals" || exit 1
 else
-    echo "== SKIP : qmltestrunner introuvable (tests QML ignorés) =="
+    echo "== SKIP: qmltestrunner not found (QML tests skipped) =="
 fi
 
 if [ -n "$QMLLINT" ]; then
-    echo "== analyse statique (qmllint, config .qmllint.ini du projet) =="
+    echo "== static analysis (qmllint, project .qmllint.ini) =="
     cd "$ROOT" || exit 1
     LINT_ARGS=""
     [ -n "$QMLDIR" ] && LINT_ARGS="-I $QMLDIR"
@@ -77,33 +77,33 @@ if [ -n "$QMLLINT" ]; then
              "$DIR/tst_compact.qml"; do
         out=$(env -u LD_LIBRARY_PATH "$QMLLINT" $LINT_ARGS "$f" 2>&1)
         if echo "$out" | grep -qE "^Warning|^Error"; then
-            echo "ECHEC lint : $(basename "$f")"
+            echo "LINT FAIL: $(basename "$f")"
             echo "$out" | grep -E "^Warning|^Error" | head -6
             exit 1
         fi
         echo "  OK : $(basename "$f")"
     done
 else
-    echo "== SKIP : qmllint introuvable =="
+    echo "== SKIP: qmllint not found =="
 fi
 
 if [ "${RUN_SMOKE:-0}" = "1" ]; then
-    echo "== smoke test plasmoid (plasmawindowed 8 s) =="
-    # pre-requis : le smoke n'a de sens que contre une copie INSTALLEE
-    # (plasmawindowed rend une fenetre vide et muette pour un applet inconnu)
+    echo "== plasmoid smoke test (plasmawindowed 8 s) =="
+    # prerequisite: the smoke only makes sense against an INSTALLED copy
+    # (plasmawindowed renders a silent empty window for an unknown applet)
     if [ ! -d /usr/share/plasma/plasmoids/org.coolingctl ] \
        && [ ! -d "${HOME}/.local/share/plasma/plasmoids/org.coolingctl" ]; then
-        echo "ECHEC : le plasmoid org.coolingctl n'est pas installé" >&2
+        echo "FAIL: plasmoid org.coolingctl is not installed" >&2
         exit 1
     fi
     LOG=$(mktemp)
     env -u LD_LIBRARY_PATH timeout 8 plasmawindowed org.coolingctl > "$LOG" 2>&1
-    # critere unique du smoke (identique au Makefile) : le log doit rester VIDE
+    # single smoke criterion (same as the Makefile): the log must stay EMPTY
     if [ -s "$LOG" ]; then
-        echo "ECHEC : erreurs QML au chargement"; cat "$LOG"; rm -f "$LOG"; exit 1
+        echo "FAIL: QML load errors"; cat "$LOG"; rm -f "$LOG"; exit 1
     fi
-    echo "OK : chargement sans erreur QML"
+    echo "OK: load without QML errors"
     rm -f "$LOG"
 fi
 
-echo "== tout est vert =="
+echo "== all green =="

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Tests du helper coolingctl.sh — contrat d'interface du plasmoid.
+"""Tests of the coolingctl.sh helper — the plasmoid's interface contract.
 
-Specs couvertes :
+Covered specs:
   S6  `status` : ligne à 9 champs tctl|fan1|fan2|pad_rpm|mode|plateau_pct|gpu|cpu|gpu_pct
-      mode mappé : courbe->silencieux, jeu->jeu, libre->libre ;
-      pad_rpm et plateau issus du fichier d'état ; absent -> -1
-  S7  `set-plateau N` : écrit le plateau dans le json (clamp 0..100),
-      borné, invalide rejeté ; envoie SIGHUP au daemon
-  S8  `mode X` : SIGUSR1 (jeu), SIGUSR2 (silencieux), SIGWINCH (libre) ;
-      mode invalide rejeté
+      mode passthrough: silent|game|free (fallback silent);
+      pad_rpm and plateau come from the state file; absent -> -1
+  S7  `set-plateau N`: writes the plateau into the json (clamped 0..100),
+      bounded, invalid rejected; sends SIGHUP to the daemon
+  S8  `mode X`: SIGUSR1 (game), SIGUSR2 (silent), SIGWINCH (free);
+      invalid mode rejected
 
-Matérialisé par un environnement factice : XDG_RUNTIME_DIR temporaire,
-json de courbe temporaire (COOLINGCTL_GAMING_JSON), systemctl factice
-dans le PATH qui journalise ses arguments.
+Materialized through a fake environment: temporary XDG_RUNTIME_DIR,
+temporary curve json (COOLINGCTL_GAMING_JSON), a fake systemctl
+in the PATH that logs its arguments.
 """
 import os
 import json
@@ -36,9 +36,9 @@ class FakeEnv:
         self.gaming_json = os.path.join(self.tmp, "gaming-plateau.json")
         os.makedirs(self.xdg)
         os.makedirs(self.fakebin)
-        # repertoire de config canonique, comme une vraie installation
+        # canonical config directory, like a real installation
         os.makedirs(os.path.join(self.tmp, "config", "coolingctl"))
-        # arbre DRM factice : device = symlink vers le chemin PCI, comme dans /sys
+        # fake DRM tree: device = symlink to the PCI path, like in /sys
         self.drm = os.path.join(self.tmp, "drm")
         igpu_pci = os.path.join(self.tmp, "pci", "c4:00.0")
         os.makedirs(igpu_pci)
@@ -77,8 +77,8 @@ class FakeEnv:
         return e
 
     def env_par_defaut(self):
-        """Environnement SANS surcharges : le helper doit resoudre seul
-        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json."""
+        """Environment WITHOUT overrides: the helper must resolve
+        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json on its own."""
         e = self.env
         e.pop("COOLINGCTL_GAMING_JSON")
         return e
@@ -107,10 +107,10 @@ class FakeEnv:
 
 
 class TestStatus(unittest.TestCase):
-    """S6 : format et mapping du status."""
+    """S6: status format and mapping."""
 
     def test_9_champs(self):
-        env = FakeEnv("mode=courbe\ntemp=60.0\nplateau_pct=30.0\n"
+        env = FakeEnv("mode=silent\ntemp=60.0\nplateau_pct=30.0\n"
                       "plateau_rpm=1300\nrpm_cmd=500\nrpm_reported=500\npad_present=1\n")
         try:
             r = env.run("status")
@@ -118,15 +118,15 @@ class TestStatus(unittest.TestCase):
             champs = r.stdout.strip().split("|")
             self.assertEqual(len(champs), 9, champs)
             self.assertEqual(champs[3], "500")        # pad_rpm
-            self.assertEqual(champs[4], "silencieux")  # courbe -> silencieux
+            self.assertEqual(champs[4], "silent")  # curve -> silent
             self.assertEqual(champs[5], "30.0")        # plateau
             self.assertRegex(champs[7], r"^[0-9]+$")    # charge CPU 0..100
             self.assertRegex(champs[8], r"^-?[0-9]+$")  # charge GPU (-1 si absente)
         finally:
             env.cleanup()
 
-    def test_mode_jeu_et_libre(self):
-        for mode, attendu in [("jeu", "jeu"), ("libre", "libre")]:
+    def test_mode_game_and_free(self):
+        for mode, attendu in [("game", "game"), ("free", "free")]:
             env = FakeEnv(f"mode={mode}\nrpm_reported=1300\nplateau_pct=30\n")
             try:
                 champs = env.run("status").stdout.strip().split("|")
@@ -139,14 +139,14 @@ class TestStatus(unittest.TestCase):
         try:
             champs = env.run("status").stdout.strip().split("|")
             self.assertEqual(champs[3], "-1")
-            self.assertEqual(champs[4], "silencieux")
+            self.assertEqual(champs[4], "silent")
             self.assertEqual(champs[5], "-1")
         finally:
             env.cleanup()
 
 
     def test_cpu_delta(self):
-        """S16 : charge CPU = delta /proc/stat, amorce puis valeur 0..100."""
+        """S16: CPU load = /proc/stat delta, primed then a 0..100 value."""
         env = FakeEnv()
         try:
             env.run("status")  # amorçage (premier appel : delta impossible)
@@ -158,27 +158,27 @@ class TestStatus(unittest.TestCase):
             env.cleanup()
 
     def test_gpu_pct_hermetique(self):
-        """S25 : charge GPU lue depuis l'arbre DRM factice (iGPU, dGPU endormi)."""
+        """S25: GPU load read from the fake DRM tree (iGPU, sleeping dGPU)."""
         env = FakeEnv()
         try:
             champs = env.run("status").stdout.strip().split("|")
-            self.assertEqual(champs[8], "55")  # la valeur du fake, pas du vrai matos
+            self.assertEqual(champs[8], "55")  # the fake value, not the real hardware
         finally:
             env.cleanup()
 
     def test_chemins_par_defaut(self):
-        """S17 : sans surcharge d'env, le helper résout seul
-        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (noms canoniques)."""
+        """S17: without env overrides, the helper resolves
+        XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (canonical names)."""
         env = FakeEnv()
         try:
             canonique = os.path.join(env.env["XDG_CONFIG_HOME"],
                                      "coolingctl", "gaming-plateau.json")
-            # une installation existante : le fichier de config est deja la
+            # an existing installation: the config file is already there
             shutil.copy(env.gaming_json, canonique)
             r = env.run_par_defaut("set-plateau", "25")
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertTrue(os.path.exists(canonique),
-                            f"le helper n'a pas resolu le chemin par defaut : {canonique}")
+                            f"the helper did not resolve the default path: {canonique}")
             with open(canonique) as f:
                 self.assertIn('"percent": 25', f.read())
         finally:
@@ -186,7 +186,7 @@ class TestStatus(unittest.TestCase):
 
 
 class TestSetPlateau(unittest.TestCase):
-    """S7 : écriture du plateau + SIGHUP."""
+    """S7: plateau write + SIGHUP."""
 
     def test_ecriture_et_signal(self):
         env = FakeEnv()
@@ -222,11 +222,11 @@ class TestSetPlateau(unittest.TestCase):
 
 
 class TestMode(unittest.TestCase):
-    """S8 : signaux de mode."""
+    """S8: mode signals."""
 
     def test_signaux(self):
-        for mode, sig in [("jeu", "SIGUSR1"), ("silencieux", "SIGUSR2"),
-                           ("libre", "SIGWINCH")]:
+        for mode, sig in [("game", "SIGUSR1"), ("silent", "SIGUSR2"),
+                           ("free", "SIGWINCH")]:
             env = FakeEnv()
             try:
                 r = env.run("mode", mode)

@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Tests structurels anti-régression — chaque règle encode un bug vécu.
+"""Structural anti-regression tests — every rule encodes a bug we actually hit.
 
-Leçon du 2026-10-04 : les bugs QML d'un plasmoid sont silencieux à l'exécution
-(propriétés attachées inexistantes, absence de hints Layout, modes 600 dans le
-paquet). Ces vérifications statiques les attrapent avant l'installation.
+Lesson of 2026-10-04: a plasmoid's QML bugs are silent at runtime
+(non-existent attached properties, missing Layout hints, 600 modes in the
+package). These static checks catch them before installation.
 
-  S19 `expanded` doit être basculé via le PlasmoidItem (root.expanded),
-      jamais via l'objet attaché `Plasmoid` — piége de migration Plasma 5→6 :
-      `Plasmoid.expanded` n'existe pas (AppletQuickItem.expanded si)
-  S20 le compact doit déclarer ses hints de taille via Layout.* —
-      le conteneur de panneau lit Layout.*, pas les tailles implicites
-  S21 le compact doit se déclarer bouton (Accessible.role: Button)
-      et gérer son clic (MouseArea) — le shell ne le fait pas pour nous
-  S22 preferredRepresentation doit être le compact (sinon popupHS)
-  S23 aucun debug (console.log) ne doit rester dans les sources QML
-  S24 les fichiers des sources doivent être lisibles par tous (644/755) —
-      un paquet copie les modes, le bug 600 a rendu le widget invisible
-  S30 le slider ne doit pas utiliser onPressed:/onReleased: — QQC2 Slider
-      n'expose pas ces signaux (pressed est une propriété) : le handler
-      inexistant fait tomber le plasmoid ENTIER en fallback icône settings,
-      et qmllint ne le voit pas (handler muet par UnqualifiedAccess=disable)
+  S19 `expanded` must be toggled through the PlasmoidItem (root.expanded),
+      never through the attached `Plasmoid` object — a Plasma 5 to 6 migration trap:
+      `Plasmoid.expanded` does not exist (AppletQuickItem.expanded does)
+  S20 the compact must declare its size hints via Layout.* —
+      the panel container reads Layout.*, not implicit sizes
+  S21 the compact must declare itself a button (Accessible.role: Button)
+      and handle its click (MouseArea) — the shell does not do it for us
+  S22 preferredRepresentation must be the compact (else popupHS)
+  S23 no debug (console.log) must remain in the QML sources
+  S24 source files must be readable by everyone (644/755) —
+      a package copies modes, the 600-mode bug made the widget invisible
+  S30 the slider must not use onPressed:/onReleased: — the QQC2 Slider
+      does not expose those signals (pressed is a property): a handler
+      on a non-existent one takes the WHOLE plasmoid down to a settings icon,
+      and qmllint does not see it (handler muted by UnqualifiedAccess=disable)
 """
 import os
 import stat
@@ -38,15 +38,15 @@ class TestStructureQml(unittest.TestCase):
             self.qml = f.read()
 
     def test_s19_expanded_sur_plasmoiditem(self):
-        """Le toggle expanded doit passer par root (PlasmoidItem/AppletQuickItem)."""
+        """The expanded toggle must go through root (PlasmoidItem/AppletQuickItem)."""
         self.assertNotIn("Plasmoid.expanded", self.qml,
-                         "Plasmoid.expanded n'existe pas en Plasma 6 "
-                         "(expanded vit sur AppletQuickItem)")
+                         "Plasmoid.expanded does not exist in Plasma 6 "
+                         "(expanded lives on AppletQuickItem)")
         self.assertGreaterEqual(self.qml.count("root.expanded"), 3,
-                                "bascule expanded absente du compact")
+                                "compact missing the expanded toggle")
 
     def test_s20_hints_layout_du_compact(self):
-        """Le conteneur de panneau dimensionne via Layout.*, pas implicit*."""
+        """The panel container sizes via Layout.*, not implicit*."""
         self.assertIn("Layout.preferredWidth: vertical ? -1 : compactRow.implicitWidth",
                       self.qml)
         self.assertIn("Layout.minimumWidth: compactRow.implicitWidth", self.qml)
@@ -62,54 +62,54 @@ class TestStructureQml(unittest.TestCase):
         self.assertNotIn("console.log", self.qml)
 
     def test_s28_slider_snap_pendant_drag(self):
-        """Le handle doit crantifier pendant le drag. Solution native QQC2 :
-        snapMode SnapAlways (pattern du slider Animation speed de la landing
-        page Plasma, kcms/landingpage) — la position snape sur la grille des
-        pas a chaque mouvement. Le default du wrapper Plasma est SnapOnRelease
-        (glissement continu puis snap au relachement), d'ou la surcharge
-        obligatoire. Pas de drag custom : interactive: false + MouseArea est
-        un hack a proscrire (casse la molette, faux positif qmllint sur
-        interactive, comportement non standard)."""
+        """The handle must snap during the drag. Native QQC2 solution:
+        snapMode SnapAlways (the pattern of Plasma's landing page Animation
+        speed slider, kcms/landingpage) — the position snaps onto the step grid
+        on every move. The Plasma wrapper default is SnapOnRelease
+        (continuous slide then snap on release), hence the mandatory
+        override. No custom drag: interactive: false + MouseArea is
+        a hack to avoid (breaks the wheel, qmllint false positive on
+        interactive, non-standard behavior)."""
         self.assertIn("snapMode: QQC2.Slider.SnapAlways", self.qml,
-                      "le snap natif du handle doit etre explicite "
-                      "(le default Plasma est SnapOnRelease)")
+                      "the native handle snap must be explicit "
+                      "(the Plasma default is SnapOnRelease)")
         self.assertNotIn("interactive: false", self.qml,
-                         "le drag interne du slider ne doit pas etre desactive")
+                         "the slider's internal drag must not be disabled")
         self.assertNotIn("plateauFromFraction", self.qml,
-                         "le drag custom a ete remplace par snapMode SnapAlways")
-        self.assertIn('visible: root.padVisible && root.mode !== "libre" && root.polls > 0', self.qml,
-                      "le slider ne doit pas apparaitre avant la premiere donnee")
+                         "the custom drag was replaced by snapMode SnapAlways")
+        self.assertIn('visible: root.padVisible && root.mode !== "free" && root.polls > 0', self.qml,
+                      "the slider must not appear before the first data point")
 
     def test_s30_handlers_valides_du_slider(self):
-        """Bug vécu 2026-10-04 : « Cannot assign to non-existent property
-        "onReleased" » au clic — le plasmoid entier partait en fallback icône
-        settings. QQC2 Slider n'a pas de signaux pressed()/released() : pressed
-        est une propriété. Le release se branche sur onPressedChanged, le
-        drag/molette/clavier sur moved(). qmllint rate cette classe d'erreur
-        (le warning « no matching signal found for handler » est catégorisé
-        [unqualified], muetté par UnqualifiedAccess=disable du .qmllint.ini)."""
+        """Lived bug 2026-10-04: "Cannot assign to non-existent property
+        "onReleased" on click — the whole plasmoid fell back to a settings
+        icon. QQC2 Slider has no pressed()/released() signals: pressed
+        is a property. Release hooks into onPressedChanged, drag/wheel/
+        keyboard into moved(). qmllint misses this class of error
+        ("no matching signal found for handler" is categorized
+        [unqualified], muted by UnqualifiedAccess=disable in .qmllint.ini)."""
         block = self.qml.split("id: plateauSlider", 1)[1].split("Timer {", 1)[0]
         self.assertIn("onPressedChanged:", block,
-                      "le release du slider passe par onPressedChanged")
+                      "slider release goes through onPressedChanged")
         self.assertNotIn("onPressed:", block,
-                         "Slider QQC2 : pressed est une propriété, pas un signal")
+                         "QQC2 Slider: pressed is a property, not a signal")
         self.assertNotIn("onReleased:", block,
-                         "Slider QQC2 : le signal released() n'existe pas")
+                         "QQC2 Slider: the released() signal does not exist")
         self.assertIn("onMoved:", block,
-                      "molette/clavier : moved() hors drag doit committer")
+                      "wheel/keyboard: moved() outside a drag must commit")
 
     def test_s27_slider_resilient(self):
-        """Le plateau affiche le palier (snapPlateau) et le slider
-        se resynchronise periodiquement (anti-desync apres drag rate)."""
+        """The plateau label shows the step (snapPlateau) and the slider
+        periodically resynchronizes (anti-desync after a failed drag)."""
         self.assertIn("CLogic.snapPlateau(500 + root.plateau * 27)", self.qml,
-                      "le label au repos doit afficher le palier, pas le calcul brut")
+                      "the resting label must show the step, not the raw computation")
         self.assertGreaterEqual(self.qml.count("plateauSlider.value = 500 + root.plateau * 27"), 2,
-                                "il faut un mecanisme de resync en plus du onPlateauChanged")
+                                "a resync mechanism is needed beyond onPlateauChanged")
 
 
 class TestStructureSources(unittest.TestCase):
     def test_s24_modes_des_sources(self):
-        """644 partout, 755 pour le helper — le paquet copie ces modes."""
+        """644 everywhere, 755 for the helper — the package copies these modes."""
         plasmoid_dir = os.path.join(ROOT, "plasmoid", "org.coolingctl")
         for dirpath, _, files in os.walk(plasmoid_dir):
             for name in files:
@@ -119,7 +119,7 @@ class TestStructureSources(unittest.TestCase):
                     self.assertTrue(mode & stat.S_IXUSR, f"{name} doit etre executable")
                 else:
                     self.assertEqual(mode & 0o777, 0o644,
-                                     f"{name} doit etre 644 (est {oct(mode)})")
+                                     f"{name} must be 644 (is {oct(mode)})")
 
 
 if __name__ == "__main__":

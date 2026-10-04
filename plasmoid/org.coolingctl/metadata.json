@@ -1,12 +1,12 @@
 {
     "KPlugin": {
         "Name": "Cooling Control",
-        "Description": "Températures CPU/GPU, ventilateurs et contrôle du pad Razer (courbe silencieuse / mode jeu)",
+        "Description": "CPU/GPU temperatures, fans and Razer pad control (silent curve / game mode)",
         "Icon": "preferences-system-power",
         "Authors": [{ "Name": "Cooling Control maintainers" }],
         "Category": "System Information",
         "License": "GPL-2.0-or-later",
-        "Version": "0.3.1",
+        "Version": "0.4.0",
         "Id": "org.coolingctl",
         "EnabledByDefault": true
     },

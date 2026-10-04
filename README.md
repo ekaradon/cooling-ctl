@@ -13,6 +13,15 @@ Two pieces, one package:
   rolling averages, internal fan speeds, pad RPM, a 4-series chart, and live
   controls (pad control switch, game mode switch, stepped RPM slider).
 
+| | Dark | Light |
+|---|---|---|
+| **Full view** | ![Full view, dark](screenshots/expanded-dark.png) | ![Full view, light](screenshots/expanded-light.png) |
+| **Panel view** | ![Panel view, dark](screenshots/compact-dark.png) | ![Panel view, light](screenshots/compact-light.png) |
+
+*Full view — hero temperatures with rolling averages, 4-series chart, pad
+control and game mode switches, game mode minimum RPM slider.
+Panel view — GPU/CPU temperatures and load, with the load-paced cat.*
+
 ## Why
 
 Stock, the pad is either off or loud, and switching strategies usually means
@@ -98,7 +107,8 @@ evaluated by linear interpolation, sampled every `interval` seconds:
 ```
 
 `~/.config/coolingctl/gaming-plateau.json` — a flat curve; its **first point's
-percent** is the gaming plateau:
+percent** is the game mode fan floor: in game mode the pad never runs below
+this speed, so a constant airflow slows the heat-up during play:
 
 ```json
 {
@@ -146,7 +156,7 @@ Live state is published atomically at each loop iteration (3 s) in
 `$XDG_RUNTIME_DIR/coolingctl.status`:
 
 ```
-mode=courbe
+mode=silent
 temp=62.0
 plateau_pct=33
 plateau_rpm=1391
@@ -168,12 +178,13 @@ no pad → no pad series, no errors.
 - **Popup (full) view**: hero temperatures with rolling averages, a 4-series
   chart (CPU temp, GPU temp, internal fans, pad RPM) with anti-collision
   labels and a 93 °C threshold band, pad control and game mode switches, and
-  a stepped RPM slider (500→3200 in 300 RPM steps, snapped handle, commit on
+  a stepped game mode minimum RPM slider (500→3200 in 300 RPM steps, snapped
+  handle, commit on
   release, self-resyncing).
 
 The helper `coolingctl.sh status` returns 9 pipe-separated machine-readable
 fields: `tctl|fan1|fan2|pad_rpm|mode|plateau_pct|gpu|cpu|gpu_pct`;
-`set-plateau <pct>` and `mode <jeu|silencieux|libre>` perform actions.
+`set-plateau <pct>` and `mode <game|silent|free>` perform actions.
 
 **Hardware scope note**: the pad control and curve engine are generic, but the
 helper's sensor discovery (internal fans via the Framework's `cros_ec`, dGPU

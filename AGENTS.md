@@ -46,8 +46,11 @@ Rules that follow from this shape:
 
 ## Coding conventions
 
-- Comments in French in the sources (existing style); new files may be
-  English or French but stay consistent within a file.
+- All comments, docstrings, UI strings and tool output are in English — the
+  protocol too: the status file publishes `mode=silent|game|free`, the helper
+  CLI verbs are `game|silent|free`, passthrough from the daemon. Changing this
+  vocabulary is a breaking change: bump the version and update daemon, helper,
+  plasmoid and tests together.
 - The plasmoid is QML/JS; pure logic lives in `contents/ui/compact-logic.js`
   as `.pragma library` functions **so it is unit-testable via qmltestrunner**
   (QML UI files are not loadable in tests). New compact-view logic goes

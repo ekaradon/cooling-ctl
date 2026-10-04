@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] — 2026-10-04
+
+- **English protocol**: the daemon now publishes `mode=silent|game|free` in the
+  status file (was `courbe|jeu|libre`), and the helper CLI verbs are
+  `game|silent|free` (was `jeu|silencieux|libre`); the helper passes the mode
+  through instead of requalifying it. Breaking: the plasmoid, helper and
+  daemon must be upgraded together (same package).
+- All comments, docstrings, UI strings and tool output translated to English;
+  UI labels anglicized ("Laptop fans", "SILENT CURVE", "GAME MODE", …).
+- Screenshots added (dark/light, compact and full views), generated via the
+  capture pipeline.
+
 ## [0.3.1] — 2026-10-04
 
 - Package renamed `fw16-coolingctl` → `cooling-ctl` to match the repository

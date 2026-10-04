@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""coolingctld - daemon unique de controle du Razer Laptop Cooling Pad.
+"""coolingctld - single daemon controlling the Razer Laptop Cooling Pad.
 
-Un seul proprietaire du device HID, modes internes, bascule par signaux
-sans jamais relancer le process :
+Single owner of the HID device, internal modes, signal-based switching
+without ever restarting the process:
 
-  SIGUSR1 -> mode jeu   (plateau fixe tenu en memoire par le daemon)
-  SIGUSR2 -> mode courbe (courbe silent-curve.json)
-  SIGWINCH-> mode libre (relache le controle : rapport off, pad firmware)
-  SIGHUP  -> recharger les fichiers de config (plateau modifie, mode inchange)
-             NB : le plateau utilise par le mode jeu est celui en memoire ;
-             toute modification du json passe donc par un SIGHUP
+  SIGUSR1 -> game mode  (fixed plateau held in daemon memory)
+  SIGUSR2 -> silent mode (silent-curve.json curve)
+  SIGWINCH-> free mode  (releases control: off report, pad firmware)
+  SIGHUP  -> reload config files (plateau changed, mode unchanged)
+             NB: the plateau used by game mode is the in-memory one;
+             any change to the json therefore goes through SIGHUP
 
-Donnees :
-  courbe  : $XDG_CONFIG_HOME/coolingctl/silent-curve.json
-  plateau : $XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (premier point)
+Data:
+  curve   : $XDG_CONFIG_HOME/coolingctl/silent-curve.json
+  plateau : $XDG_CONFIG_HOME/coolingctl/gaming-plateau.json (first point)
 
-Etat publie (atomiquement, a chaque boucle) :
+State published (atomically, every loop):
   $XDG_RUNTIME_DIR/coolingctl.status : lignes cle=valeur
   mode, temp, plateau_pct, plateau_rpm, rpm_cmd, rpm_reported, pad_present
 
-Arret propre (SIGTERM) : envoi le rapport "off" au pad (retour au comportement
-firmware), comme le controleur historique.
+Clean stop (SIGTERM): sends the "off" report to the pad (back to firmware
+behavior), like the historical controller.
 """
 
 import json
@@ -48,8 +48,8 @@ HEADER = bytearray([
     0x36, 0x00,
 ] + [0x00] * 78)
 
-# Configuration : XDG Base Directory (courbes = config du daemon).
-# Surcharge possible via COOLINGCTL_CURVES_DIR.
+# Configuration: XDG Base Directory (curves = daemon config).
+# Can be overridden via COOLINGCTL_CURVES_DIR.
 XDG_CONFIG = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
 CURVES_DIR = os.environ.get("COOLINGCTL_CURVES_DIR",
                             os.path.join(XDG_CONFIG, "coolingctl"))
@@ -59,7 +59,7 @@ STATUS_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), "coolingctl.status")
 
 
-# ---------- protocole HID (identique a razer-coolingpad-fancurve) ----------
+# ---------- HID protocol (identical to razer-coolingpad-fancurve) ----------
 IDX_REPORT_CODE = 8
 IDX_SUB_VER = 9
 IDX_CURVE_ID = 10
@@ -124,7 +124,7 @@ def read_rpm(dev):
         return None
 
 
-# ------------------------------ capteurs ----------------------------------
+# ------------------------------ sensors -----------------------------------
 
 def find_k10temp():
     import glob
@@ -149,11 +149,11 @@ def read_temp(sensor_path):
         return None
 
 
-# -------------------------------- etat -------------------------------------
+# -------------------------------- state -----------------------------------
 
 class State:
     def __init__(self):
-        self.mode = "courbe"          # courbe | jeu
+        self.mode = "silent"        # silent | game | free
         self.curve = []              # [(temp, percent)]
         self.plateau_pct = 30
         self.last_rpm = None
@@ -174,7 +174,7 @@ class State:
                        for p in json.load(f)["curve"]]
             return sorted(pts)
         except Exception as e:
-            print(f"courbe illisible ({e}), plateau seul disponible", file=sys.stderr)
+            print(f"unreadable curve ({e}), plateau seul disponible", file=sys.stderr)
             return []
 
     @staticmethod
@@ -184,7 +184,7 @@ class State:
                 pts = json.load(f)["curve"]
                 return float(pts[0]["percent"])
         except Exception as e:
-            print(f"plateau illisible ({e})", file=sys.stderr)
+            print(f"unreadable plateau ({e})", file=sys.stderr)
             return None
 
 
@@ -224,7 +224,7 @@ def write_status(mode, temp, plateau_pct, rpm_cmd, rpm_rep, pad_present):
         print(f"ecriture status impossible: {e}", file=sys.stderr)
 
 
-# --------------------------------- main ------------------------------------
+# --------------------------------- main -----------------------------------
 def main():
 
     st = State()
@@ -233,11 +233,11 @@ def main():
 
     def handle(sig, frame):
         if sig == signal.SIGUSR1:
-            pending["mode"] = "jeu"
+            pending["mode"] = "game"
         elif sig == signal.SIGUSR2:
-            pending["mode"] = "courbe"
+            pending["mode"] = "silent"
         elif sig == signal.SIGWINCH:
-            pending["mode"] = "libre"
+            pending["mode"] = "free"
         elif sig == signal.SIGHUP:
             pending["reload"] = True
 
@@ -260,55 +260,55 @@ def main():
     k10 = find_k10temp()
     dev = open_device()
     if dev is None:
-        print("pad absent au demarrage, en attente...", flush=True)
+        print("pad absent at startup, waiting...", flush=True)
 
     last_rep = None
-    print("coolingctld actif (mode courbe)", flush=True)
+    print("coolingctld up (silent mode)", flush=True)
     while running[0]:
-        # signaux
+        # signals
         if pending["mode"] is not None:
             new_mode = pending["mode"]
             pending["mode"] = None
             if new_mode != st.mode:
-                if new_mode == "libre" and dev is not None:
+                if new_mode == "free" and dev is not None:
                     send(dev, build_off_report())
-                    print("controle relache (rapport off)", flush=True)
+                    print("control released (off report)", flush=True)
                 st.mode = new_mode
-                st.last_rpm = None  # forcer la reecriture au changement de mode
+                st.last_rpm = None  # force a rewrite on mode change
                 print(f"mode -> {st.mode}", flush=True)
         if pending["reload"]:
             pending["reload"] = False
             st.reload()
             st.last_rpm = None
-            print(f"config rechargee (plateau {st.plateau_pct}%)", flush=True)
+            print(f"config reloaded (plateau {st.plateau_pct}%)", flush=True)
 
-        # capteur CPU (re-resoudre s'il disparait)
+        # CPU sensor (re-resolve if it disappears)
         temp = read_temp(k10) if k10 else None
         if temp is None:
             k10 = find_k10temp()
             temp = read_temp(k10) if k10 else None
 
-        # cible selon le mode (libre = aucun controle)
+        # target depending on mode (free = no control)
         pct = None
-        if temp is not None and st.mode != "libre":
-            if st.mode == "jeu":
+        if temp is not None and st.mode != "free":
+            if st.mode == "game":
                 pct = st.plateau_pct
             else:
                 pct = interpolate(st.curve, temp)
         rpm = pct_to_rpm(pct) if pct is not None else None
 
-        # dedup (granularite du device)
+        # dedup (device granularity)
         if rpm is not None and st.last_rpm is not None and abs(rpm - st.last_rpm) < 50:
             rpm = st.last_rpm
 
-        # reconnexion si besoin
+        # reconnect if needed
         if dev is None:
             dev = open_device()
             if dev is not None:
                 st.last_rpm = None
                 print("pad connecte", flush=True)
 
-        # application
+        # apply
         pad_present = dev is not None
         if dev is not None and rpm is not None and rpm != st.last_rpm:
             if not send(dev, build_set_rpm_report(rpm)):
@@ -319,7 +319,7 @@ def main():
             else:
                 st.last_rpm = rpm
 
-        # lecture retour
+        # read back
         if dev is not None:
             rep = read_rpm(dev)
             if rep is None:

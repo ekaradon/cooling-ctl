@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Tests d'intégration contre le daemon LIVE (service user coolingctl).
+"""Integration tests against the LIVE daemon (coolingctl user service).
 
-Sautés si le daemon n'est pas en cours d'exécution (CI sans machine).
+Skipped when the daemon is not running (CI without the machine).
 
-Specs couvertes :
-  S9  le fichier d'état est publié et schema-valide en continu
-  S10 bascule mode par signaux sans restart (NRestarts inchangé)
-  S11 plateau modifié à chaud sans restart du daemon
+Covered specs:
+  S9  the state file is published and schema-valid continuously
+  S10 mode switching by signal without a restart (NRestarts unchanged)
+  S11 plateau modified hot without restarting the daemon
 """
 import os
 import re
@@ -65,15 +65,15 @@ class TestIntegration(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # restauration complete de l'etat initial
+        # full restoration of the initial state
         plateau = cls.plateau_initial
         with open(GAMING_JSON) as f:
             contenu = f.read()
         with open(GAMING_JSON, "w") as f:
             f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {plateau}', contenu))
-        signal_daemon("SIGHUP")  # resynchroniser le daemon avec le fichier restaure
+        signal_daemon("SIGHUP")  # resync the daemon with the restored file
         mode = cls.etat_initial["mode"]
-        sig = {"jeu": "SIGUSR1", "courbe": "SIGUSR2", "libre": "SIGWINCH"}[mode]
+        sig = {"game": "SIGUSR1", "silent": "SIGUSR2", "free": "SIGWINCH"}[mode]
         signal_daemon(sig)
 
     @staticmethod
@@ -92,7 +92,7 @@ class TestIntegration(unittest.TestCase):
     def test_s9_schema_status(self):
         fields = lire_status()
         self.assertTrue(KEYS.issubset(fields), fields)
-        self.assertIn(fields["mode"], {"courbe", "jeu", "libre"})
+        self.assertIn(fields["mode"], {"silent", "game", "free"})
         float(fields["temp"])
         float(fields["plateau_pct"])
         int(fields["rpm_cmd"])
@@ -102,12 +102,12 @@ class TestIntegration(unittest.TestCase):
     def test_s10_bascule_mode_sans_restart(self):
         n0 = self._nrestarts()
         signal_daemon("SIGUSR1")
-        self.assertTrue(attendre(lambda: lire_status()["mode"] == "jeu"),
-                        "mode jeu non atteint")
+        self.assertTrue(attendre(lambda: lire_status()["mode"] == "game"),
+                        "game mode not reached")
         signal_daemon("SIGUSR2")
-        self.assertTrue(attendre(lambda: lire_status()["mode"] == "courbe"),
-                        "mode courbe non atteint")
-        self.assertEqual(self._nrestarts(), n0, "le daemon a redémarré !")
+        self.assertTrue(attendre(lambda: lire_status()["mode"] == "silent"),
+                        "silent mode not reached")
+        self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
     def test_s11_plateau_a_chaud(self):
         n0 = self._nrestarts()
@@ -119,7 +119,7 @@ class TestIntegration(unittest.TestCase):
         self.assertTrue(
             attendre(lambda: lire_status()["plateau_rpm"] == "1400"),
             f"plateau_rpm={lire_status().get('plateau_rpm')} != 1400")
-        self.assertEqual(self._nrestarts(), n0, "le daemon a redémarré !")
+        self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
 
 if __name__ == "__main__":

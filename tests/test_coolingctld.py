@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Tests unitaires du daemon coolingctld — spécifications fonctionnelles du projet.
+"""Unit tests of the coolingctld daemon — the project's functional specifications.
 
-Specs couvertes :
-  S1  protocole HID identique octet par octet au contrôleur de référence
-  S2  conversion % -> RPM : 500 + pct*27, paliers de 50, clamp [0, 100]
-  S3  interpolation linéaire de la courbe (bornes = points extrêmes)
-  S4  lecture des courbes JSON (courbe triée, plateau = premier point)
-  S5  fichier d'état key=valeur, champs complets, écriture atomique
+Covered specs:
+  S1  HID protocol byte-for-byte identical to the reference controller
+  S2  % -> RPM conversion: 500 + pct*27, steps of 50, clamp [0, 100]
+  S3  linear curve interpolation (bounds = extreme points)
+  S4  curve JSON loading (sorted curve, plateau = first point)
+  S5  key=value state file, complete fields, atomic writes
 """
 import importlib.util
 import json
@@ -17,10 +17,10 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DAEMON = os.path.join(ROOT, "daemon", "coolingctld.py")
-# Controleur de reference (protocole HID historique) : chemin fourni par
-# COOLINGCTL_REFERENCE (ex. un clone de razer-coolingpad-linux contenant
-# razer-coolingpad-fancurve.py). Absent -> les tests de parite S1 sont
-# sautes, tout le reste de la suite reste actif.
+# Reference controller (historical HID protocol): path provided by
+# COOLINGCTL_REFERENCE (e.g. a clone of razer-coolingpad-linux containing
+# razer-coolingpad-fancurve.py). When absent -> the S1 parity tests are
+# skipped, everything else stays active.
 REFERENCE = os.environ.get("COOLINGCTL_REFERENCE", "")
 REFERENCE = REFERENCE if os.path.isfile(REFERENCE) else ""
 
@@ -37,9 +37,9 @@ ref = load_module(REFERENCE, "fancurve") if REFERENCE else None
 
 
 @unittest.skipUnless(ref is not None,
-                     "controleur de reference absent (COOLINGCTL_REFERENCE)")
+                     "reference controller absent (COOLINGCTL_REFERENCE)")
 class TestProtocoleHID(unittest.TestCase):
-    """S1 : rapports HID en parité octet par octet avec la référence."""
+    """S1: HID reports byte-for-byte on par with the reference."""
 
     def test_set_rpm_parity(self):
         for rpm in [500, 650, 800, 1310, 1500, 2000, 2700, 3200]:
@@ -59,7 +59,7 @@ class TestProtocoleHID(unittest.TestCase):
 
 
 class TestConversions(unittest.TestCase):
-    """S2 : mapping % -> RPM."""
+    """S2: % -> RPM mapping."""
 
     def test_mapping_connu(self):
         cases = {0: 500, 30: 1300, 37: 1500, 50: 1850, 100: 3200}
@@ -67,7 +67,7 @@ class TestConversions(unittest.TestCase):
             self.assertEqual(d.pct_to_rpm(pct), rpm, f"pct {pct}")
 
     @unittest.skipUnless(ref is not None,
-                         "controleur de reference absent (COOLINGCTL_REFERENCE)")
+                         "reference controller absent (COOLINGCTL_REFERENCE)")
     def test_parity_reference(self):
         for pct in range(0, 101, 7):
             self.assertEqual(d.pct_to_rpm(pct), ref.percent_to_rpm(pct))
@@ -78,7 +78,7 @@ class TestConversions(unittest.TestCase):
 
 
 class TestInterpolation(unittest.TestCase):
-    """S3 : interpolation de courbe."""
+    """S3: curve interpolation."""
 
     CURVE = [(0, 0), (76, 0), (82, 20), (85, 35), (88, 55), (92, 75), (95, 90), (98, 100)]
 
@@ -94,12 +94,12 @@ class TestInterpolation(unittest.TestCase):
     def test_point_exact(self):
         self.assertEqual(d.interpolate(self.CURVE, 85), 35)
 
-    def test_courbe_vide(self):
+    def test_empty_curve(self):
         self.assertIsNone(d.interpolate([], 50))
 
 
 class TestConfig(unittest.TestCase):
-    """S4 : lecture des JSON de courbes."""
+    """S4: curve JSON loading."""
 
     def test_load_curve_triee(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
@@ -127,12 +127,12 @@ class TestConfig(unittest.TestCase):
 
 
 class TestStatusFile(unittest.TestCase):
-    """S5 : fichier d'état key=valeur, complet, atomique."""
+    """S5: key=value state file, complete, atomic."""
 
     def _write(self, **kw):
         tmpdir = tempfile.mkdtemp()
         d.STATUS_FILE = os.path.join(tmpdir, "coolingctl.status")
-        defaults = dict(mode="jeu", temp=63.5, plateau_pct=30.0,
+        defaults = dict(mode="game", temp=63.5, plateau_pct=30.0,
                         rpm_cmd=1300, rpm_rep=1300, pad_present=True)
         defaults.update(kw)
         d.write_status(**defaults)
@@ -143,7 +143,7 @@ class TestStatusFile(unittest.TestCase):
     def test_format_complet(self):
         tmpdir, content = self._write()
         try:
-            for attendu in ["mode=jeu", "temp=63.5", "plateau_pct=30.0",
+            for attendu in ["mode=game", "temp=63.5", "plateau_pct=30.0",
                            "plateau_rpm=1300", "rpm_cmd=1300",
                            "rpm_reported=1300", "pad_present=1"]:
                 self.assertIn(attendu, content)
@@ -152,7 +152,7 @@ class TestStatusFile(unittest.TestCase):
             shutil.rmtree(tmpdir)
 
     def test_valeurs_absentes(self):
-        tmpdir, content = self._write(mode="courbe", temp=None,
+        tmpdir, content = self._write(mode="silent", temp=None,
                                       rpm_cmd=None, rpm_rep=None, pad_present=False)
         try:
             for attendu in ["temp=-1", "rpm_cmd=-1", "rpm_reported=-1", "pad_present=0"]:
