@@ -1,5 +1,5 @@
 #!/bin/sh
-# fw16-coolingctl helper - source unique de donnees/actions du plasmoid.
+# cooling-ctl helper - source unique de donnees/actions du plasmoid.
 # Toutes les donnees pad viennent du daemon coolingctl (fichier d'etat),
 # le reste est lu dans /sys. Les actions sont des signaux, jamais des restarts.
 #

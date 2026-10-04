@@ -1,4 +1,4 @@
-# fw16-coolingctl — Cooling Control
+# cooling-ctl — Cooling Control
 
 A single, quiet, signal-driven control stack for the **Razer Laptop Cooling
 Pad** on Linux, built around a **Framework Laptop 16 (AMD)** but not limited
@@ -57,7 +57,7 @@ The package installs:
 | Path | Content |
 |---|---|
 | `/usr/share/plasma/plasmoids/org.coolingctl/` | plasmoid |
-| `/usr/lib/fw16-coolingctl/coolingctld.py` | daemon |
+| `/usr/lib/cooling-ctl/coolingctld.py` | daemon |
 | `/usr/lib/systemd/user/coolingctl.service` | user unit |
 | `/usr/lib/udev/rules.d/99-razer-coolingpad.rules` | pad access without root |
 

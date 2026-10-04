@@ -5,7 +5,7 @@ After=graphical-session.target
 [Service]
 Type=simple
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /usr/lib/fw16-coolingctl/coolingctld.py
+ExecStart=/usr/bin/python3 /usr/lib/cooling-ctl/coolingctld.py
 Restart=on-failure
 RestartSec=5
 

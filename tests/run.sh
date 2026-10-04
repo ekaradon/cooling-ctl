@@ -1,5 +1,5 @@
 #!/bin/sh
-# Suite de tests fw16-coolingctl.
+# Suite de tests cooling-ctl.
 #   ./run.sh              -> tests unitaires + helper + intégration + QML + lint
 #   SKIP_INTEGRATION=1    -> ignorer les tests contre le daemon live
 #   RUN_SMOKE=1           -> + test de chargement du plasmoid (plasmawindowed,
@@ -49,7 +49,7 @@ fi
 
 echo "== outils : qmltestrunner=${QMLTR:-AUCUN} qmllint=${QMLLINT:-AUCUN} imports=${QMLDIR:-defaut} python=$PY =="
 
-echo "== fw16-coolingctl : tests unitaires + helper =="
+echo "== cooling-ctl : tests unitaires + helper =="
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_coolingctld.py" -v || exit 1
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_helper.py" -v || exit 1
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_structure.py" -v || exit 1

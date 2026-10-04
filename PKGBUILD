@@ -1,11 +1,12 @@
 # Maintainer: ekaradon <ekaradon@users.noreply.github.com>
-pkgname=fw16-coolingctl
-pkgver=0.3.0
+pkgname=cooling-ctl
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Plasmoid Plasma 6 + daemon : temperatures, ventilateurs internes et controle du Razer Laptop Cooling Pad (courbe silencieuse / mode jeu, signaux sans restart)"
 arch=(any)
 url="https://github.com/ekaradon/cooling-ctl"
 license=(GPL-2.0-or-later)
+replaces=(fw16-coolingctl)
 depends=(kirigami libplasma plasma-workspace plasma5support python python-hidapi)
 makedepends=(git)
 options=(!strip !debug)
@@ -26,7 +27,7 @@ package() {
 
     # daemon
     install -Dm755 "$srcdir/cooling-ctl/daemon/coolingctld.py" \
-        "$pkgdir/usr/lib/fw16-coolingctl/coolingctld.py"
+        "$pkgdir/usr/lib/cooling-ctl/coolingctld.py"
 
     # unit utilisateur
     install -Dm644 "$srcdir/cooling-ctl/systemd/coolingctl.service" \

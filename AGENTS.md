@@ -6,7 +6,7 @@ user-facing picture.
 
 ## What this project is
 
-One Arch package, `fw16-coolingctl`, shipping two cooperating pieces:
+One Arch package, `cooling-ctl`, shipping two cooperating pieces:
 
 ```
 plasmoid/org.coolingctl/          Plasma 6 widget (UI, reads, actions)
@@ -106,7 +106,7 @@ widget reloads NOTHING. The cycle:
 
 ## Packaging
 
-- `make pkg` (or `makepkg -f`) builds `fw16-coolingctl-<ver>-<rel>-any.pkg.tar.zst`.
+- `make pkg` (or `makepkg -f`) builds `cooling-ctl-<ver>-<rel>-any.pkg.tar.zst`.
 - Modes are normalized at install (dirs 755, files 644, helper 755) — a
   source tree with wrong modes must never leak into the package.
 - Before publishing: fill the `# Maintainer:` line and the real `url` in

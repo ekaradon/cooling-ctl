@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] — 2026-10-04
+
+- Package renamed `fw16-coolingctl` → `cooling-ctl` to match the repository
+  name (the project is not Framework-16-specific). Daemon path moves to
+  `/usr/lib/cooling-ctl/`, systemd unit and plasmoid id unchanged.
+  `replaces=(fw16-coolingctl)` migrates existing installs.
+- PKGBUILD now builds from the published git tag (`source` git + `#tag=`),
+  making it AUR-ready.
+
 ## [0.3.0] — 2026-10-04
 
 First public release.
