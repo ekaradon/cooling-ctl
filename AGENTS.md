@@ -113,7 +113,9 @@ widget reloads NOTHING. The cycle:
 4. `systemctl --user restart plasma-plasmashell.service`.
 5. After user validation: bump `pkgver`/`pkgrel` in `PKGBUILD` and
    `Version` in `metadata.json`, `make check` (includes packaging build),
-   install, then **delete the `~/.local` copy** — the package must be the
+   install, **restart `coolingctl.service`** (pacman never restarts user
+   services — the old daemon keeps running from the deleted binary),
+   then **delete the `~/.local` copy** — the package must be the
    only installed source.
 
 ## Screenshots (`screenshots/`)
