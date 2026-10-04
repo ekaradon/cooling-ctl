@@ -1,0 +1,9 @@
+# artefacts makepkg
+pkg/
+src/
+*.pkg.tar.*
+# python
+__pycache__/
+*.pyc
+# divers
+*.log

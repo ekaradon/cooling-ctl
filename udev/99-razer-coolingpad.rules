@@ -1,0 +1,5 @@
+# Razer Laptop Cooling Pad (1532:0f43) — accès hidraw/usb sans root pour le
+# daemon utilisateur coolingctld. À installer dans /etc/udev/rules.d/ puis
+# `udevadm control --reload && udevadm trigger` (ou replug du pad).
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0f43", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0f43", MODE="0666"
