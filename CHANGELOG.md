@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] — 2026-10-04
+
+- Fix: the compact cat was invisible in the dark theme — KSvg does not
+  recolor symbolic SVGs outside an applet context. It now renders as a
+  Kirigami.Icon mask tinted with the theme text color (dark and light
+  verified), guarded by structural test S31.
+- AGENTS.md: crash trap (never deploy a .local copy under a live panel id),
+  screenshot pipeline documented.
+- Compact screenshots regenerated with the fix.
+
 ## [0.4.0] — 2026-10-04
 
 - **English protocol**: the daemon now publishes `mode=silent|game|free` in the

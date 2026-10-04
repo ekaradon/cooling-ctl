@@ -20,6 +20,9 @@ package). These static checks catch them before installation.
       does not expose those signals (pressed is a property): a handler
       on a non-existent one takes the WHOLE plasmoid down to a settings icon,
       and qmllint does not see it (handler muted by UnqualifiedAccess=disable)
+  S31 the compact cat must be rendered as a Kirigami.Icon isMask tinted
+      Kirigami.Theme.textColor — KSvg does not recolor symbolic SVGs outside
+      an applet context (lived bug: dark-on-dark cat, invisible in dark theme)
 """
 import os
 import stat
@@ -97,6 +100,22 @@ class TestStructureQml(unittest.TestCase):
                          "QQC2 Slider: the released() signal does not exist")
         self.assertIn("onMoved:", block,
                       "wheel/keyboard: moved() outside a drag must commit")
+
+    def test_s31_chat_visible_en_theme_sombre(self):
+        """Lived bug 2026-10-04: the compact cat (a symbolic SVG with
+        fill:currentColor and the Breeze LIGHT text color baked into the
+        file) rendered dark-on-dark and was invisible in the dark theme —
+        KSvg does not recolor symbolic SVGs outside of an applet context.
+        The cat must be a Kirigami.Icon mask tinted with the theme text
+        color, so it adapts to dark and light alike."""
+        parts = self.qml.split("id: catItem")
+        self.assertGreaterEqual(len(parts), 2, "the cat must exist (id catItem)")
+        cat = parts[1][:1200]
+        self.assertIn("isMask: true", cat, "the cat must render as a mask")
+        self.assertIn("color: Kirigami.Theme.textColor", cat,
+                      "the cat must be tinted with the theme text color")
+        self.assertNotIn("KSvg.SvgItem", self.qml,
+                         "KSvg does not recolor symbolic SVGs here")
 
     def test_s27_slider_resilient(self):
         """The plateau label shows the step (snapPlateau) and the slider

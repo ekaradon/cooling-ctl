@@ -55,6 +55,10 @@ Rules that follow from this shape:
   as `.pragma library` functions **so it is unit-testable via qmltestrunner**
   (QML UI files are not loadable in tests). New compact-view logic goes
   there, not inline in `main.qml`.
+- Symbolic SVGs (the cat) are NOT recolored by KSvg outside an applet
+  context: render them as `Kirigami.Icon { isMask: true; color:
+  Kirigami.Theme.textColor }` so they adapt to dark and light themes
+  (S31 in `tests/test_structure.py` guards this).
 - Python: stdlib only (plus `hid`). The daemon must run on the plain system
   interpreter, no venv.
 - Configs: JSON under `~/.config/coolingctl/` (XDG). The daemon never writes
@@ -99,6 +103,11 @@ widget reloads NOTHING. The cycle:
 2. Copy `plasmoid/org.coolingctl` to
    `~/.local/share/plasma/plasmoids/org.coolingctl/` (chmod 755 the helper)
    → `kbuildsycoca6 --noincremental`.
+   **Crash trap (two plasmashell SIGSEGVs, 2026-10-04): never deploy a
+   `.local` copy under the SAME id as a widget that is live in the panel and
+   run kbuildsycoca — plasmashell segfaults as the plasmoid is swapped under
+   it. For screenshots/tests, deploy a variant under a DIFFERENT id
+   (`org.coolingctl.shot`, `.cshot`, …), never the panel id.**
 3. Smoke: `timeout 8 plasmawindowed org.coolingctl` → log must be EMPTY.
    (plasmawindowed shows the compact view.)
 4. `systemctl --user restart plasma-plasmashell.service`.
@@ -106,6 +115,28 @@ widget reloads NOTHING. The cycle:
    `Version` in `metadata.json`, `make check` (includes packaging build),
    install, then **delete the `~/.local` copy** — the package must be the
    only installed source.
+
+## Screenshots (`screenshots/`)
+
+Generated from the real widget, never mocked:
+
+- **Full view**: variant `.shot` (different id,
+  `preferredRepresentation: fullRepresentation`), launched with
+  `setsid -f plasmawindowed <id>` (survives the calling shell). Keep the
+  window alive **4 minutes** so the chart fills, then
+  `spectacle -b -n -a` after focusing it via KWin scripting
+  (`workspace.activeWindow = w` — `w.active` is read-only). Switch themes
+  with `plasma-apply-lookandfeel` on the LIVE window: it recolors without
+  losing the chart, so dark and light come from the same 4-minute run.
+- **Panel (compact) view**: variant `.cshot`, resized via
+  `w.frameGeometry = {x, y, width, height}` (plain JS object; the apply is
+  **asynchronous** — do not trust a print right after) into a taskbar-like
+  420x56 strip, `noBorder = true`, capture, crop the content bounding box.
+- KWin scripting API notes: `loadScript` needs a UNIQUE path per call
+  (duplicates silently do not run), `resize()` does not exist on
+  XdgToplevelWindow, resourceClass is `org.kde.plasmawindowed`, `print()`
+  lands in the plasma-kwin_wayland journal.
+- Always restore the machine's theme after a light/dark pass.
 
 ## Packaging
 

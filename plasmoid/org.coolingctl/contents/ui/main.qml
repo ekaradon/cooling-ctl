@@ -3,7 +3,6 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.core as PlasmaCore
-import org.kde.ksvg as KSvg
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as P5Support
@@ -580,13 +579,17 @@ PlasmoidItem {
             // em space: the cat, alone
             Rectangle { Layout.alignment: Qt.AlignVCenter; implicitWidth: 1; implicitHeight: compact.h * 0.55; color: Kirigami.Theme.disabledTextColor; opacity: 0.4 }
 
-            KSvg.SvgItem {
+            // theme-colored silhouette: KSvg does not recolor symbolic SVGs
+            // outside of an applet context (lived bug: black cat on dark)
+            Kirigami.Icon {
                 id: catItem
                 property int frame: 0
                 Layout.alignment: Qt.AlignVCenter
                 Layout.preferredWidth: compact.h * 0.9
                 Layout.preferredHeight: compact.h * 0.9
-                imagePath: Qt.resolvedUrl("../images/my-idle-symbolic.svg")
+                isMask: true
+                color: Kirigami.Theme.textColor
+                source: Qt.resolvedUrl("../images/my-idle-symbolic.svg")
 
                 Timer {
                     id: catTimer
@@ -595,9 +598,9 @@ PlasmoidItem {
                     interval: CLogic.catInterval(CLogic.driveLoad(root.cpu, root.gpuLoad))
                     onTriggered: {
                         if (CLogic.catIsIdle(CLogic.driveLoad(root.cpu, root.gpuLoad))) {
-                            catItem.imagePath = Qt.resolvedUrl("../images/my-idle-symbolic.svg")
+                            catItem.source = Qt.resolvedUrl("../images/my-idle-symbolic.svg")
                         } else {
-                            catItem.imagePath = Qt.resolvedUrl("../images/my-active-" + catItem.frame + "-symbolic.svg")
+                            catItem.source = Qt.resolvedUrl("../images/my-active-" + catItem.frame + "-symbolic.svg")
                             catItem.frame = CLogic.nextFrame(catItem.frame)
                         }
                     }
