@@ -194,7 +194,8 @@ plasmoid's internal-fan and GPU-load readouts may need adaptation.
 
 ## Development
 
-The quality and packaging pipeline is exposed via `make` targets: `make test`
+The quality and packaging pipeline is exposed via `make` targets; the
+screenshots are regenerated from the real widget by `tools/capture-screenshots.sh`: `make test`
 (full suite), `make lint`, `make smoke` (plasmoid load gate, requires an
 installed copy), `make pkg` (Arch package), `make check` (pre-release gate).
 
