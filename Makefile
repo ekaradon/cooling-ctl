@@ -44,17 +44,17 @@ lint:
 smoke:
 	@if [ ! -d /usr/share/plasma/plasmoids/org.coolingctl ] \
 	   && [ ! -d ~/.local/share/plasma/plasmoids/org.coolingctl ]; then \
-	    echo "SMOKE FAIL : le plasmoid org.coolingctl n'est pas installé" \
-	         "(le smoke n'a de sens que contre une copie installée)"; \
+	    echo "SMOKE FAIL: the org.coolingctl plasmoid is not installed" \
+	         "(the smoke only makes sense against an installed copy)"; \
 	    exit 1; \
 	fi
 	@LOG=$$(mktemp); \
 	echo "== smoke : plasmawindowed 8 s =="; \
 	env -u LD_LIBRARY_PATH timeout 8 plasmawindowed org.coolingctl > "$$LOG" 2>&1; \
 	if [ -s "$$LOG" ]; then \
-	    echo "SMOKE FAIL : le log doit rester vide"; cat "$$LOG"; rm -f "$$LOG"; exit 1; \
+	    echo "SMOKE FAIL: the log must stay empty"; cat "$$LOG"; rm -f "$$LOG"; exit 1; \
 	fi; \
-	echo "OK : chargement sans erreur QML"; \
+	echo "OK: load without QML errors"; \
 	rm -f "$$LOG"
 
 pkg:
@@ -62,7 +62,7 @@ pkg:
 	@echo "package: $(PKG)-$(VER)-$(REL)-any.pkg.tar.zst"
 
 check: test lint smoke pkg
-	@echo "== check complet : tests + lint + smoke + package =="
+	@echo "== check: tests + lint + smoke + package =="
 
 clean:
 	rm -rf pkg src *.pkg.tar.*
