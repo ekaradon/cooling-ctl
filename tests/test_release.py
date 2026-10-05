@@ -94,6 +94,16 @@ class TestChangelogSection(unittest.TestCase):
         ])
         self.assertIn("(breaking)", section)
 
+    def test_s47_em_dash_header(self):
+        # the hand-written sections separate version and date with an
+        # em-dash: a generated hyphen header read as a style bug in the
+        # 0.7.0/0.7.1 sections
+        section = pr.changelog_section("1.2.3", [
+            ("fix", None, False, "a fix", "aa1111"),
+        ])
+        self.assertIn("## [1.2.3] — ", section)
+        self.assertNotIn("## [1.2.3] - ", section)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -90,7 +90,7 @@ def next_version(cur, commits):
 
 def changelog_section(version, commits):
     """Keep-a-Changelog-flavoured section for the release."""
-    lines = ["## [" + version + "] - " + date.today().isoformat(), ""]
+    lines = ["## [" + version + "] — " + date.today().isoformat(), ""]
     feats = [c for c in commits if c[0] == "feat" or c[2]]
     fixes = [c for c in commits if c[0] == "fix" and not c[2]]
     if feats:
