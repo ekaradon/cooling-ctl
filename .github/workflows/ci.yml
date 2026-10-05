@@ -28,7 +28,7 @@ jobs:
           pacman -Syu --noconfirm git \
               qt6-base qt6-declarative \
               kirigami libplasma kdeclarative plasma5support \
-              python-hidapi mypy
+              python-hidapi python-yaml mypy
       - uses: actions/checkout@v4
       - name: test suite (unit, structural, QML, lint, typing)
         env:
