@@ -71,8 +71,15 @@ Rules that follow from this shape:
 
 `tests/run.sh` is the gate: unit (daemon/helper), structural
 (`test_structure.py` — each S-number encodes a bug actually hit), integration
-against the live daemon, QML logic via qmltestrunner, qmllint. Options:
-`SKIP_INTEGRATION`, `RUN_SMOKE`, `COOLINGCTL_PYTHON`, `COOLINGCTL_REFERENCE`.
+against the live daemon, QML logic via qmltestrunner, qmllint, mypy typing.
+Options: `SKIP_INTEGRATION`, `RUN_SMOKE`, `COOLINGCTL_PYTHON`,
+`COOLINGCTL_REFERENCE`, `MYPY`.
+
+CI (`.github/workflows/ci.yml`) runs the suite on every push in an Arch
+container (`SKIP_INTEGRATION=1` — the live tests need the physical pad) and
+builds the PKGBUILD as published — git source, no local shortcut — on
+`v*` tags, uploading the package as an artifact. The smoke gate, the
+integration tests and the screenshots stay manual: they need the machine.
 
 House rules:
 
@@ -162,4 +169,9 @@ Generated from the real widget, never mocked:
   Test-support paths come from environment variables, never hardcoded.
 - No build artifacts committed (`pkg/`, `*.pkg.tar.*` are gitignored).
 - Commit messages: imperative subject line + body explaining why. Amend
-  freely while the repository has not been published.
+  freely while a change has not been published (pushed on an open PR).
+- Contribution flow: changes land through a PR. An agent freely creates
+  branches, commits and pushes PR branches on its own; it NEVER pushes to
+  `main` (branch protection: PR required, `ci` checks required) and never
+  pushes tags without the maintainer's go-ahead. CI must be green and the
+  maintainer performs the merge.

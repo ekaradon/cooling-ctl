@@ -135,6 +135,8 @@ systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
 
 ## Development
 
+[![CI](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml/badge.svg)](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml)
+
 ```sh
 make test        # unit + structural + integration + QML + lint
 make check       # + smoke + package build
