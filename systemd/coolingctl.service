@@ -1,5 +1,5 @@
 [Unit]
-Description=Cooling Control daemon - pad Razer (courbe / mode jeu par signaux)
+Description=Cooling Control daemon - Razer pad (curve / game mode via signals)
 After=graphical-session.target
 
 [Service]

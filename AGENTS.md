@@ -37,7 +37,7 @@ Rules that follow from this shape:
   change modes is a regression.
 - **UI never blocks**: sensors are polled through the helper subprocess; a
   failed/absent pad or sensor degrades to an em-dash or an empty string per
-  value (the chart shows « collecte des données… » before the first poll),
+  value (the chart shows "collecting data…" before the first poll),
   never to an error popup.
 - Helper `status` contract: 12 pipe-separated fields
   `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color`.
@@ -47,7 +47,9 @@ Rules that follow from this shape:
 ## Coding conventions
 
 - All comments, docstrings, UI strings and tool output are in English — the
-  protocol too: the status file publishes `mode=silent|game|free`, the helper
+  tests, packaging scripts, systemd unit and CI messages are no exception
+  (review-enforced, no CI gate for language). The protocol too: the status
+  file publishes `mode=silent|game|free`, the helper
   CLI verbs are `game|silent|free`, passthrough from the daemon. Changing this
   vocabulary is a breaking change: bump the version and update daemon, helper,
   plasmoid and tests together.
