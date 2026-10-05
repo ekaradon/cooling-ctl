@@ -556,6 +556,9 @@ PlasmoidItem {
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.ComboBox {
                     id: ledSelect
+                    // disabled until the daemon's configured effect is known:
+                    // never offer a control showing a value we don't have yet
+                    enabled: root.polls > 0
                     readonly property var values: ["keep", "off", "static", "spectrum", "wave", "heat"]
                     model: [i18n("Default"), i18n("Off"), i18n("Static"), i18n("Spectrum"), i18n("Wave"), i18n("Heat")]
                     currentIndex: Math.max(0, values.indexOf(root.led))
@@ -622,7 +625,9 @@ PlasmoidItem {
                         }
                         Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
-                            text: ledBrightness.value + " %"
+                            // ellipsis until the daemon reports the real
+                            // brightness: never show a fake "0 %"
+                            text: root.ledBright >= 0 ? ledBrightness.value + " %" : i18n("…")
                             font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                             font.weight: Font.Bold
                         }
@@ -631,6 +636,10 @@ PlasmoidItem {
                         PlasmaComponents.Slider {
                         id: ledBrightness
                         from: 0; to: 100; stepSize: 5
+                        // disabled until the daemon reports the configured
+                        // brightness — dragging a placeholder value would
+                        // commit garbage
+                        enabled: root.ledBright >= 0
                         Layout.fillWidth: true
                         Layout.topMargin: Kirigami.Units.smallSpacing
                         // initialized from the daemon's configured brightness;

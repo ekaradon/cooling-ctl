@@ -161,6 +161,12 @@ LED_CMD_BRIGHTNESS = 0x04
 LED_VARSTORE = 0x01
 LED_ZERO_LED = 0x00
 LED_WAVE_SPEED = 0x28          # padctl's default wave speed
+# Pause between an LED packet and the fan-frame re-prime. The pad's LED
+# controller once went deaf to every LED command (fan control kept working,
+# fixed only by a full power cycle) after a morning of LED packets followed
+# within microseconds by fan frames; the pause keeps the RPM-echo fix from
+# hammering the firmware (lived incident 2026-10-05).
+LED_PRIME_DELAY = 0.2
 
 
 def build_led_report(cmd, size, args):
@@ -271,11 +277,14 @@ def prime_rpm_frame(dev, st):
     """The pad's feature report buffer ECHOES the last written frame: after
     an LED packet, read_rpm decodes LED bytes as garbage RPM (lived bug:
     a 40% brightness byte read as 5100 RPM). Re-send the last fan/off frame
-    so the next read returns real telemetry."""
+    so the next read returns real telemetry — but only after a short pause:
+    an LED packet followed immediately by a fan frame left the pad's LED
+    controller deaf once (lived incident; see LED_PRIME_DELAY)."""
     if dev is None:
         return
     frame = getattr(st, "last_frame", None)
     if frame is not None:
+        time.sleep(LED_PRIME_DELAY)
         send(dev, frame)
 
 

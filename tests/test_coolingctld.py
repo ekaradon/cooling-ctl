@@ -307,6 +307,26 @@ class TestRpmRead(unittest.TestCase):
         self.assertEqual(d.read_rpm(FakeDev(self._report(4000))), 4000)
         self.assertIsNone(d.read_rpm(FakeDev(self._report(4050))))
 
+    def test_s41_prime_separated_from_led(self):
+        # the re-prime must pause after LED packets: an LED packet followed
+        # within microseconds by a fan frame left the LED controller deaf
+        # (lived incident) — the pause is the insurance
+        frame = d.build_set_rpm_report(1500)
+        dev = FakeDev()
+        st = type("St", (), {})()
+        st.last_frame = frame
+        slept = []
+        real_sleep = d.time.sleep
+        d.time.sleep = lambda s: slept.append(s)
+        try:
+            d.prime_rpm_frame(dev, st)
+        finally:
+            d.time.sleep = real_sleep
+        self.assertEqual(slept, [d.LED_PRIME_DELAY],
+                         "the fan frame must follow the pause, not the LED packet")
+        self.assertGreater(d.LED_PRIME_DELAY, 0)
+        self.assertEqual(dev.written[-1], bytes(frame))
+
     def test_s38_prime_rpm_frame(self):
         # after an LED write the caller must re-send the last fan frame
         frame = d.build_set_rpm_report(1500)

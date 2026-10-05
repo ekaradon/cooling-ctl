@@ -128,6 +128,18 @@ class TestStructureQml(unittest.TestCase):
         self.assertNotIn('text: i18n("Pad")', self.qml,
                          "the bare Pad label must not resurface")
 
+    def test_s40_led_controls_gated_until_known(self):
+        """No control shows a value we don't have: the effect combo and the
+        brightness slider stay disabled until the daemon's configured state
+        arrives (first poll), and the % label shows an ellipsis instead of
+        a fake "0 %" (lived complaint: 0 % flashed before 40 %)."""
+        self.assertIn("enabled: root.polls > 0", self.qml,
+                      "the effect ComboBox must be disabled before the first poll")
+        self.assertIn("enabled: root.ledBright >= 0", self.qml,
+                      "the brightness slider must be disabled until the brightness is known")
+        self.assertIn('i18n("…")', self.qml,
+                      "unknown brightness must show an ellipsis, never a fake value")
+
     def test_s36_led_ui(self):
         """The full view must not become a wall of controls: LED settings
         live in a second tab (media-player plasmoid pattern). The Lighting

@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] — 2026-10-05
+
+- Fix: LED controls never show a value we don't have — the effect combo
+  and the brightness slider stay disabled until the daemon's configured
+  state arrives (first poll), and the % label shows an ellipsis instead
+  of flashing a fake "0 %". Guarded by S40.
+- Hardening: the fan-frame re-prime now pauses 0.2 s after LED packets.
+  Lived incident: after a morning of LED packets followed within
+  microseconds by fan frames, the pad's LED controller went deaf to
+  every lighting command (fan control kept working); only a full power
+  cycle plus the pad's ON button recovered it. Guarded by S41.
+- Wave validated on hardware: direction "right" sweeps right-to-left
+  when facing the pad.
+
 ## [0.6.0] — 2026-10-05
 
 - LED strip control, in a dedicated **Lighting tab** of the full view
