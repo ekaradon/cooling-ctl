@@ -5,7 +5,7 @@ import "../plasmoid/org.coolingctl/contents/ui/compact-logic.js" as CL
 // Tests of the compact (panel) view logic — qmltestrunner.
 // Specifications:
 //   S12 cat cadence: decreases with load, 80 ms floor,
-//       formule CatWalk 5000/sqrt(cpu+35)-400
+//       CatWalk formula 5000/sqrt(cpu+35)-400
 //   S13 idle threshold: idle < 20 %
 //   S14 frame cycle: 5 frames, wraps to 0
 //   S15 compact texts: average > instant > fallback (dash for CPU,
@@ -15,13 +15,13 @@ TestCase {
 
     function test_s12_cadence() {
         verify(CL.catInterval(0) > CL.catInterval(50), "cadence must accelerate with load")
-        verify(CL.catInterval(50) > CL.catInterval(100), "idem")
+        verify(CL.catInterval(50) > CL.catInterval(100), "same")
         compare(CL.catInterval(100), Math.max(80, Math.ceil(5000 / Math.sqrt(135) - 400)))
-        verify(CL.catInterval(1000) >= 80, "plancher 80 ms")
+        verify(CL.catInterval(1000) >= 80, "80 ms floor")
     }
 
-    function test_s12_charge_negative() {
-        verify(CL.catInterval(-1) > 0, "charge aberrante : pas de crash")
+    function test_s12_negative_load() {
+        verify(CL.catInterval(-1) > 0, "out-of-range load: no crash")
     }
 
     function test_s13_idle() {
@@ -73,13 +73,13 @@ TestCase {
         compare(CL.snapFloor(3300), 3200)   // beyond: clamp
     }
 
-    function test_s29_grille_paliers() {
+    function test_s29_slider_grid() {
         // fixed point of the native slider (from 500, to 3200, stepSize 300,
         // snapMode SnapAlways): every grid step is stable under
         // snapFloor, the max lands exactly on the grid, and the 10
         // ticks stay <= 20 (above that the Plasma wrapper stops drawing them)
         for (let k = 0; k <= 9; k++)
-            compare(CL.snapFloor(500 + k * 300), 500 + k * 300, "palier " + k)
+            compare(CL.snapFloor(500 + k * 300), 500 + k * 300, "step " + k)
         verify((3200 - 500) % 300 === 0, "the max must land exactly on the grid")
         compare((3200 - 500) / 300, 9)
         verify((3200 - 500) / 300 <= 20, "above 20 steps the Plasma wrapper hides the ticks")

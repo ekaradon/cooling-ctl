@@ -43,7 +43,7 @@ ref = load_module(REFERENCE, "fancurve") if REFERENCE else None
 
 @unittest.skipUnless(ref is not None,
                      "reference controller absent (COOLINGCTL_REFERENCE)")
-class TestProtocoleHID(unittest.TestCase):
+class TestHidProtocol(unittest.TestCase):
     """S1: HID reports byte-for-byte on par with the reference."""
 
     def test_set_rpm_parity(self):
@@ -58,7 +58,7 @@ class TestProtocoleHID(unittest.TestCase):
     def test_off_parity(self):
         self.assertEqual(d.build_off_report(), ref.build_off_report())
 
-    def test_taille_rapport(self):
+    def test_report_size(self):
         self.assertEqual(len(d.build_set_rpm_report(1500)), 91)
         self.assertEqual(len(d.build_off_report()), 91)
 
@@ -66,7 +66,7 @@ class TestProtocoleHID(unittest.TestCase):
 class TestConversions(unittest.TestCase):
     """S2: % -> RPM mapping."""
 
-    def test_mapping_connu(self):
+    def test_known_mapping(self):
         cases = {0: 500, 30: 1300, 37: 1500, 50: 1850, 100: 3200}
         for pct, rpm in cases.items():
             self.assertEqual(d.pct_to_rpm(pct), rpm, f"pct {pct}")
@@ -87,16 +87,16 @@ class TestInterpolation(unittest.TestCase):
 
     CURVE = [(0, 0), (76, 0), (82, 20), (85, 35), (88, 55), (92, 75), (95, 90), (98, 100)]
 
-    def test_sous_premier_point(self):
+    def test_below_first_point(self):
         self.assertEqual(d.interpolate(self.CURVE, -10), 0)
 
-    def test_au_dernier_point(self):
+    def test_at_last_point(self):
         self.assertEqual(d.interpolate(self.CURVE, 200), 100)
 
-    def test_entre_points(self):
+    def test_between_points(self):
         self.assertAlmostEqual(d.interpolate(self.CURVE, 79), 10.0)
 
-    def test_point_exact(self):
+    def test_exact_point(self):
         self.assertEqual(d.interpolate(self.CURVE, 85), 35)
 
     def test_empty_curve(self):
@@ -106,7 +106,7 @@ class TestInterpolation(unittest.TestCase):
 class TestConfig(unittest.TestCase):
     """S4: curve JSON loading."""
 
-    def test_load_curve_triee(self):
+    def test_load_sorted_curve(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump({"curve": [{"temp": 120, "percent": 30},
                                  {"temp": 0, "percent": 30}]}, f)
@@ -126,7 +126,7 @@ class TestConfig(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    def test_fichiers_absents(self):
+    def test_missing_files(self):
         self.assertEqual(d.State.load_curve("/inexistant.json"), [])
         self.assertIsNone(d.State.load_floor("/inexistant.json"))
 
@@ -145,18 +145,18 @@ class TestStatusFile(unittest.TestCase):
             content = f.read()
         return tmpdir, content
 
-    def test_format_complet(self):
+    def test_complete_format(self):
         tmpdir, content = self._write()
         try:
             for expected in ["mode=game", "temp=63.5", "floor_pct=30.0",
                            "floor_rpm=1300", "rpm_cmd=1300",
                            "rpm_reported=1300", "pad_present=1"]:
                 self.assertIn(expected, content)
-            self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicité
+            self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicity
         finally:
             shutil.rmtree(tmpdir)
 
-    def test_valeurs_absentes(self):
+    def test_missing_values(self):
         tmpdir, content = self._write(mode="silent", temp=None,
                                       rpm_cmd=None, rpm_rep=None, pad_present=False)
         try:

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tests of the coolingctl.sh helper — the plasmoid's interface contract.
 Covered specs:
-  S6  `status` : ligne à 9 champs tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct
+  S6  `status`: pipe-separated line tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|
+      cpu|gpu_pct|led|led_brightness|led_color (12 fields)
       mode passthrough: silent|game|free (fallback silent);
       pad_rpm and floor come from the state file; absent -> -1
   S7  `set-floor N`: writes the floor into the json (clamped 0..100),
@@ -75,14 +76,14 @@ class FakeEnv:
         e["COOLINGCTL_DRM_DIR"] = self.drm
         e.pop("LD_LIBRARY_PATH", None)
         return e
-    def env_par_defaut(self):
+    def default_env(self):
         """Environment WITHOUT overrides: the helper must resolve
         XDG_CONFIG_HOME/coolingctl/game-floor.json on its own."""
         e = self.env
         e.pop("COOLINGCTL_GAMING_JSON")
         return e
-    def run_par_defaut(self, *args):
-        return subprocess.run(["sh", HELPER, *args], env=self.env_par_defaut(),
+    def run_default(self, *args):
+        return subprocess.run(["sh", HELPER, *args], env=self.default_env(),
                               capture_output=True, text=True, timeout=10)
     def run(self, *args):
         return subprocess.run(["sh", HELPER, *args], env=self.env,
@@ -100,37 +101,37 @@ class FakeEnv:
         shutil.rmtree(self.tmp)
 class TestStatus(unittest.TestCase):
     """S6: status format and mapping."""
-    def test_9_champs(self):
+    def test_field_count(self):
         env = FakeEnv("mode=silent\ntemp=60.0\nfloor_pct=30.0\n"
                       "floor_rpm=1300\nrpm_cmd=500\nrpm_reported=500\npad_present=1\n")
         try:
             r = env.run("status")
             self.assertEqual(r.returncode, 0, r.stderr)
-            champs = r.stdout.strip().split("|")
-            self.assertEqual(len(champs), 12, champs)
-            self.assertEqual(champs[3], "500")        # pad_rpm
-            self.assertEqual(champs[4], "silent")  # curve -> silent
-            self.assertEqual(champs[5], "30.0")        # floor
-            self.assertRegex(champs[7], r"^[0-9]+$")    # CPU load 0..100
-            self.assertRegex(champs[8], r"^-?[0-9]+$")  # GPU load (-1 when absent)
+            fields = r.stdout.strip().split("|")
+            self.assertEqual(len(fields), 12, fields)
+            self.assertEqual(fields[3], "500")        # pad_rpm
+            self.assertEqual(fields[4], "silent")  # curve -> silent
+            self.assertEqual(fields[5], "30.0")        # floor
+            self.assertRegex(fields[7], r"^[0-9]+$")    # CPU load 0..100
+            self.assertRegex(fields[8], r"^-?[0-9]+$")  # GPU load (-1 when absent)
         finally:
             env.cleanup()
     def test_mode_game_and_free(self):
         for mode, expected in [("game", "game"), ("free", "free")]:
             env = FakeEnv(f"mode={mode}\nrpm_reported=1300\nfloor_pct=30\n")
             try:
-                champs = env.run("status").stdout.strip().split("|")
-                self.assertEqual(champs[4], expected)
-                self.assertEqual(champs[9], "keep")   # no led= in the file
-                self.assertEqual(champs[10], "100")  # brightness defaults
-                self.assertEqual(champs[11], "#ff6600")  # color defaults
+                fields = env.run("status").stdout.strip().split("|")
+                self.assertEqual(fields[4], expected)
+                self.assertEqual(fields[9], "keep")   # no led= in the file
+                self.assertEqual(fields[10], "100")  # brightness defaults
+                self.assertEqual(fields[11], "#ff6600")  # color defaults
             finally:
                 env.cleanup()
     def test_led_field_passthrough(self):
         env = FakeEnv("mode=silent\nrpm_reported=1300\nfloor_pct=30\nled=heat\n")
         try:
-            champs = env.run("status").stdout.strip().split("|")
-            self.assertEqual(champs[9], "heat")
+            fields = env.run("status").stdout.strip().split("|")
+            self.assertEqual(fields[9], "heat")
         finally:
             env.cleanup()
 class TestLed(unittest.TestCase):
@@ -227,51 +228,51 @@ class TestLed(unittest.TestCase):
     def test_status_absent(self):
         env = FakeEnv()  # no state file
         try:
-            champs = env.run("status").stdout.strip().split("|")
-            self.assertEqual(champs[3], "-1")
-            self.assertEqual(champs[4], "silent")
-            self.assertEqual(champs[5], "-1")
+            fields = env.run("status").stdout.strip().split("|")
+            self.assertEqual(fields[3], "-1")
+            self.assertEqual(fields[4], "silent")
+            self.assertEqual(fields[5], "-1")
         finally:
             env.cleanup()
     def test_cpu_delta(self):
         """S16: CPU load = /proc/stat delta, primed then a 0..100 value."""
         env = FakeEnv()
         try:
-            env.run("status")  # amorçage (premier appel : delta impossible)
-            champs = env.run("status").stdout.strip().split("|")
-            cpu = int(champs[7])
+            env.run("status")  # priming (first call: no delta yet)
+            fields = env.run("status").stdout.strip().split("|")
+            cpu = int(fields[7])
             self.assertGreaterEqual(cpu, 0)
             self.assertLessEqual(cpu, 100)
         finally:
             env.cleanup()
-    def test_gpu_pct_hermetique(self):
+    def test_gpu_pct_hermetic(self):
         """S25: GPU load read from the fake DRM tree (iGPU, sleeping dGPU)."""
         env = FakeEnv()
         try:
-            champs = env.run("status").stdout.strip().split("|")
-            self.assertEqual(champs[8], "55")  # the fake value, not the real hardware
+            fields = env.run("status").stdout.strip().split("|")
+            self.assertEqual(fields[8], "55")  # the fake value, not the real hardware
         finally:
             env.cleanup()
-    def test_chemins_par_defaut(self):
+    def test_default_paths(self):
         """S17: without env overrides, the helper resolves
         XDG_CONFIG_HOME/coolingctl/game-floor.json (canonical names)."""
         env = FakeEnv()
         try:
-            canonique = os.path.join(env.env["XDG_CONFIG_HOME"],
+            canonical = os.path.join(env.env["XDG_CONFIG_HOME"],
                                      "coolingctl", "game-floor.json")
             # an existing installation: the config file is already there
-            shutil.copy(env.gaming_json, canonique)
-            r = env.run_par_defaut("set-floor", "25")
+            shutil.copy(env.gaming_json, canonical)
+            r = env.run_default("set-floor", "25")
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertTrue(os.path.exists(canonique),
-                            f"the helper did not resolve the default path: {canonique}")
-            with open(canonique) as f:
+            self.assertTrue(os.path.exists(canonical),
+                            f"the helper did not resolve the default path: {canonical}")
+            with open(canonical) as f:
                 self.assertIn('"percent": 25', f.read())
         finally:
             env.cleanup()
 class TestSetFloor(unittest.TestCase):
     """S7: floor write + SIGHUP."""
-    def test_ecriture_et_signal(self):
+    def test_write_and_signal(self):
         env = FakeEnv()
         try:
             r = env.run("set-floor", "40")
@@ -285,15 +286,15 @@ class TestSetFloor(unittest.TestCase):
         env = FakeEnv()
         try:
             env.run("set-floor", "2")
-            self.assertEqual(env.floor(), 2)   # 0..100 valide : plus de clamp a 5
+            self.assertEqual(env.floor(), 2)   # 0..100 valid: no more clamp to 5
             self.assertEqual(env.run("set-floor", "0").returncode, 0)
-            self.assertEqual(env.floor(), 0)   # plancher 0 % = 500 RPM
-            self.assertNotEqual(env.run("set-floor", "-3").returncode, 0)  # non numerique : rejete
+            self.assertEqual(env.floor(), 0)   # floor 0 % = 500 RPM
+            self.assertNotEqual(env.run("set-floor", "-3").returncode, 0)  # non-numeric: rejected
             env.run("set-floor", "150")
             self.assertEqual(env.floor(), 100)
         finally:
             env.cleanup()
-    def test_invalide(self):
+    def test_invalid(self):
         env = FakeEnv()
         try:
             self.assertNotEqual(env.run("set-floor", "abc").returncode, 0)
@@ -302,7 +303,7 @@ class TestSetFloor(unittest.TestCase):
             env.cleanup()
 class TestMode(unittest.TestCase):
     """S8: mode signals."""
-    def test_signaux(self):
+    def test_signals(self):
         for mode, sig in [("game", "SIGUSR1"), ("silent", "SIGUSR2"),
                            ("free", "SIGWINCH")]:
             env = FakeEnv()
@@ -313,10 +314,10 @@ class TestMode(unittest.TestCase):
                               env.systemctl_calls())
             finally:
                 env.cleanup()
-    def test_mode_invalide(self):
+    def test_invalid_mode(self):
         env = FakeEnv()
         try:
-            self.assertNotEqual(env.run("mode", "nimporte").returncode, 0)
+            self.assertNotEqual(env.run("mode", "anything").returncode, 0)
         finally:
             env.cleanup()
 if __name__ == "__main__":
