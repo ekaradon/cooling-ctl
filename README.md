@@ -140,6 +140,10 @@ make test        # unit + structural + integration + QML + lint
 make check       # + smoke + package build
 ```
 
+The daemon is fully type-annotated; the test suite type-checks it with
+`mypy` (project `mypy.ini`) when the tool is available and skips that
+gate otherwise — `sudo pacman -S mypy` on Arch.
+
 Test options and the full architecture/conventions guide: `AGENTS.md`.
 Screenshots are regenerated from the real widget by
 `tools/capture-screenshots.sh`.

@@ -335,8 +335,10 @@ class TestRpmRead(unittest.TestCase):
         st.last_frame = frame
         d.prime_rpm_frame(dev, st)
         self.assertEqual(dev.written[-1], bytes(frame))
-        # no frame known: no write, no crash
-        d.prime_rpm_frame(dev, type("St", (), {})())
+        # no frame known yet (typed State guarantees the attribute): no write
+        st_empty = type("St", (), {})()
+        st_empty.last_frame = None
+        d.prime_rpm_frame(dev, st_empty)
         self.assertEqual(len(dev.written), 1)
         d.prime_rpm_frame(None, st)  # dev absent: silent no-op
 

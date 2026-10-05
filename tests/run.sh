@@ -92,6 +92,16 @@ else
     echo "== SKIP: qmllint not found =="
 fi
 
+if [ -n "${MYPY:-}" ] && [ -x "${MYPY}" ]; then
+    echo "== static typing (mypy, project mypy.ini) =="
+    env -u LD_LIBRARY_PATH "$MYPY" || exit 1
+elif command -v mypy >/dev/null 2>&1; then
+    echo "== static typing (mypy, project mypy.ini) =="
+    env -u LD_LIBRARY_PATH mypy || exit 1
+else
+    echo "== SKIP: mypy not found (typing check skipped; MYPY=/path/to/mypy to provide one) =="
+fi
+
 if [ "${RUN_SMOKE:-0}" = "1" ]; then
     echo "== plasmoid smoke test (plasmawindowed 8 s) =="
     # prerequisite: the smoke only makes sense against an INSTALLED copy

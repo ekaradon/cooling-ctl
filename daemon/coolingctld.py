@@ -29,11 +29,13 @@ import os
 import signal
 import sys
 import time
+import types
+from typing import Sequence
 
 try:
     import hid
 except ImportError:
-    print("Erreur: module hid indisponible (pip install hidapi)", file=sys.stderr)
+    print("Error: hid module unavailable (pip install hidapi)", file=sys.stderr)
     sys.exit(1)
 
 VID = 0x1532
@@ -92,7 +94,7 @@ DEFAULT_LED = {
 }
 
 
-def ensure_configs(curves_dir=None):
+def ensure_configs(curves_dir: str | None = None) -> None:
     """Create the config directory and default files when missing."""
     d = curves_dir or CURVES_DIR
     os.makedirs(d, exist_ok=True)
@@ -117,7 +119,7 @@ IDX_CHK_L = 89
 IDX_CHK_H = 90
 
 
-def build_set_rpm_report(rpm):
+def build_set_rpm_report(rpm: float) -> bytes:
     rpm = max(MIN_RPM, min(MAX_RPM, rpm))
     buf = bytearray(REPORT_LEN)
     buf[0] = REPORT_ID
@@ -133,7 +135,7 @@ def build_set_rpm_report(rpm):
     return bytes(buf)
 
 
-def build_off_report():
+def build_off_report() -> bytes:
     buf = bytearray(REPORT_LEN)
     buf[0] = REPORT_ID
     buf[1:91] = HEADER
@@ -169,7 +171,7 @@ LED_WAVE_SPEED = 0x28          # padctl's default wave speed
 LED_PRIME_DELAY = 0.2
 
 
-def build_led_report(cmd, size, args):
+def build_led_report(cmd: int, size: int, args: Sequence[int]) -> bytes:
     buf = bytearray(REPORT_LEN)
     buf[0] = REPORT_ID
     buf[2] = LED_TID
@@ -185,33 +187,34 @@ def build_led_report(cmd, size, args):
     return bytes(buf)
 
 
-def led_off_report():
+def led_off_report() -> bytes:
     return build_led_report(LED_CMD_EFFECT, 0x06, [LED_VARSTORE, LED_ZERO_LED, 0x00])
 
 
-def led_static_report(r, g, b):
+def led_static_report(r: int, g: int, b: int) -> bytes:
     return build_led_report(LED_CMD_EFFECT, 0x09,
                             [LED_VARSTORE, LED_ZERO_LED, 0x01,
                              0x00, 0x00, 0x01, r, g, b])
 
 
-def led_spectrum_report():
+def led_spectrum_report() -> bytes:
     return build_led_report(LED_CMD_EFFECT, 0x06,
                             [LED_VARSTORE, LED_ZERO_LED, 0x03])
 
 
-def led_wave_report(direction="right", speed=LED_WAVE_SPEED):
+def led_wave_report(direction: str = "right",
+                    speed: int = LED_WAVE_SPEED) -> bytes:
     dir_byte = 0x01 if direction == "left" else 0x02
     return build_led_report(LED_CMD_EFFECT, 0x06,
                             [LED_VARSTORE, LED_ZERO_LED, 0x04, dir_byte, speed])
 
 
-def led_brightness_report(brightness):
+def led_brightness_report(brightness: int) -> bytes:
     return build_led_report(LED_CMD_BRIGHTNESS, 0x03,
                             [LED_VARSTORE, LED_ZERO_LED, brightness])
 
 
-def heat_color(temp, t_min=45.0, t_max=95.0):
+def heat_color(temp: float, t_min: float = 45.0, t_max: float = 95.0) -> tuple[int, int, int]:
     """Classic thermal ramp: green (cool) -> yellow -> orange -> red (hot).
     Pure function, unit-tested; drives the 'heat' LED effect."""
     import colorsys
@@ -222,7 +225,7 @@ def heat_color(temp, t_min=45.0, t_max=95.0):
     return (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
 
 
-def heat_brightness(temp, t_min=45.0, t_max=93.0):
+def heat_brightness(temp: float, t_min: float = 45.0, t_max: float = 93.0) -> int:
     """Heat effect brightness ramp: 5 % when cool, 100 % in the danger
     zone (93 deg = the chart's threshold band). Linear, pure, tested."""
     t = max(t_min, min(t_max, temp))
@@ -230,7 +233,7 @@ def heat_brightness(temp, t_min=45.0, t_max=93.0):
     return int(round(5 + 95 * f))
 
 
-def parse_led_color(s):
+def parse_led_color(s: object) -> tuple[int, int, int] | None:
     """'#rrggbb' -> (r, g, b); None when invalid."""
     try:
         s = str(s).lstrip("#")
@@ -241,13 +244,25 @@ def parse_led_color(s):
     return None
 
 
-def apply_led(dev, cfg):
+def cfg_num(cfg: dict[str, object], key: str, default: float) -> float:
+    """Numeric value from a config dict, default when absent/invalid."""
+    v = cfg.get(key)
+    return float(v) if isinstance(v, (int, float)) else default
+
+
+def cfg_str(cfg: dict[str, object], key: str, default: str) -> str:
+    """String value from a config dict, default when absent/invalid."""
+    v = cfg.get(key)
+    return v if isinstance(v, str) else default
+
+
+def apply_led(dev: hid.device | None, cfg: dict[str, object]) -> bool:
     """Send the configured LED effect. One-shot effects only — the 'heat'
     effect is applied continuously by the main loop. Returns True when at
     least one packet was sent (the caller must re-prime the RPM frame)."""
     if dev is None or not cfg:
         return False
-    effect = cfg.get("effect", "keep")
+    effect = cfg_str(cfg, "effect", "keep")
     if effect == "keep":
         return False
     sent = False
@@ -262,8 +277,8 @@ def apply_led(dev, cfg):
         send(dev, led_spectrum_report())
         sent = True
     elif effect == "wave":
-        send(dev, led_wave_report(cfg.get("wave_dir", "right"),
-                                  int(cfg.get("wave_speed", LED_WAVE_SPEED))))
+        send(dev, led_wave_report(cfg_str(cfg, "wave_dir", "right"),
+                                  int(cfg_num(cfg, "wave_speed", LED_WAVE_SPEED))))
         sent = True
     elif effect == "static":
         rgb = parse_led_color(cfg.get("color", "#ff6600"))
@@ -273,7 +288,7 @@ def apply_led(dev, cfg):
     return sent
 
 
-def prime_rpm_frame(dev, st):
+def prime_rpm_frame(dev: hid.device | None, st: "State") -> None:
     """The pad's feature report buffer ECHOES the last written frame: after
     an LED packet, read_rpm decodes LED bytes as garbage RPM (lived bug:
     a 40% brightness byte read as 5100 RPM). Re-send the last fan/off frame
@@ -282,13 +297,13 @@ def prime_rpm_frame(dev, st):
     controller deaf once (lived incident; see LED_PRIME_DELAY)."""
     if dev is None:
         return
-    frame = getattr(st, "last_frame", None)
+    frame = st.last_frame
     if frame is not None:
         time.sleep(LED_PRIME_DELAY)
         send(dev, frame)
 
 
-def open_device():
+def open_device() -> hid.device | None:
     try:
         dev = hid.device()
         dev.open(VID, PID)
@@ -297,7 +312,7 @@ def open_device():
         return None
 
 
-def send(dev, report):
+def send(dev: hid.device, report: bytes) -> bool:
     try:
         dev.send_feature_report(report)
         return True
@@ -305,7 +320,7 @@ def send(dev, report):
         return False
 
 
-def read_rpm(dev):
+def read_rpm(dev: hid.device) -> int | None:
     try:
         data = dev.get_feature_report(REPORT_ID, REPORT_LEN)
         rpm = (data[IDX_RPM_L] | (data[IDX_RPM_H] << 8)) * 50
@@ -320,7 +335,7 @@ def read_rpm(dev):
 
 # ------------------------------ sensors -----------------------------------
 
-def find_k10temp():
+def find_k10temp() -> str | None:
     import glob
     for name_path in glob.glob("/sys/class/hwmon/hwmon*/name"):
         try:
@@ -335,7 +350,7 @@ def find_k10temp():
     return None
 
 
-def read_temp(sensor_path):
+def read_temp(sensor_path: str) -> float | None:
     try:
         with open(sensor_path) as f:
             return float(f.read().strip()) / 1000.0
@@ -346,18 +361,19 @@ def read_temp(sensor_path):
 # -------------------------------- state -----------------------------------
 
 class State:
-    def __init__(self):
-        self.mode = "silent"        # silent | game | free
-        self.curve = []              # [(temp, percent)]
-        self.floor_pct = 30
-        self.last_rpm = None
-        self.read_fails = 0
-        self.led = {}                # led.json contents (effect, color, ...)
-        self.last_heat_rgb = None    # dedup for the heat effect
-        self.last_heat_bright = None
+    def __init__(self) -> None:
+        self.mode: str = "silent"        # silent | game | free
+        self.curve: list[tuple[float, float]] = []
+        self.floor_pct: float = 30
+        self.last_rpm: int | None = None
+        self.read_fails: int = 0
+        self.led: dict[str, object] = {}  # led.json contents
+        self.last_heat_rgb: tuple[int, int, int] | None = None  # heat dedup
+        self.last_heat_bright: int | None = None
+        self.last_frame: bytes | None = None  # for prime_rpm_frame
         self.reload()
 
-    def reload(self):
+    def reload(self) -> None:
         self.curve = self.load_curve(CURVE_FILE)
         pct = self.load_floor(GAMING_FILE)
         if pct is not None:
@@ -367,7 +383,7 @@ class State:
         self.last_heat_bright = None
 
     @staticmethod
-    def load_led(path):
+    def load_led(path: str) -> dict[str, object]:
         try:
             with open(path) as f:
                 cfg = json.load(f)
@@ -378,18 +394,19 @@ class State:
         return {}
 
     @staticmethod
-    def load_curve(path):
+    def load_curve(path: str) -> "list[tuple[float, float]]":
         try:
             with open(path) as f:
-                pts = [(p["temp"], p["percent"])
+                pts = [(float(p["temp"]), float(p["percent"]))
                        for p in json.load(f)["curve"]]
             return sorted(pts)
         except Exception as e:
-            print(f"unreadable curve ({e}), floor seul disponible", file=sys.stderr)
+            print(f"unreadable curve ({e}), floor only available",
+                  file=sys.stderr)
             return []
 
     @staticmethod
-    def load_floor(path):
+    def load_floor(path: str) -> float | None:
         try:
             with open(path) as f:
                 pts = json.load(f)["curve"]
@@ -399,7 +416,7 @@ class State:
             return None
 
 
-def interpolate(curve, temp):
+def interpolate(curve: "list[tuple[float, float]]", temp: float) -> float | None:
     if not curve:
         return None
     if temp <= curve[0][0]:
@@ -411,16 +428,20 @@ def interpolate(curve, temp):
             if t1 == t0:
                 return p1
             return p0 + (p1 - p0) * (temp - t0) / (t1 - t0)
+    return None
 
 
-def pct_to_rpm(pct):
+def pct_to_rpm(pct: float) -> int:
     pct = max(0.0, min(100.0, pct))
     rpm = MIN_RPM + pct / 100.0 * (MAX_RPM - MIN_RPM)
     return int(round(rpm / 50.0)) * 50
 
 
-def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present,
-                 led="keep", led_brightness=100, led_color="#ff6600"):
+def write_status(mode: str, temp: float | None, floor_pct: float,
+                 rpm_cmd: int | None, rpm_rep: int | None,
+                 pad_present: bool,
+                 led: str = "keep", led_brightness: int = 100,
+                 led_color: str = "#ff6600") -> None:
     tmp = STATUS_FILE + ".tmp"
     try:
         with open(tmp, "w") as f:
@@ -440,14 +461,15 @@ def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present,
 
 
 # --------------------------------- main -----------------------------------
-def main():
+def main() -> None:
 
     ensure_configs()
     st = State()
-    pending = {"mode": None, "reload": False}
+    # mode: str | None (signal), reload: bool
+    pending: dict[str, str | bool | None] = {"mode": None, "reload": False}
 
 
-    def handle(sig, frame):
+    def handle(sig: int, frame: object) -> None:
         if sig == signal.SIGUSR1:
             pending["mode"] = "game"
         elif sig == signal.SIGUSR2:
@@ -463,10 +485,10 @@ def main():
     signal.signal(signal.SIGWINCH, handle)
     signal.signal(signal.SIGHUP, handle)
 
-    running = [True]
+    running: list[bool] = [True]
 
 
-    def handle_term(sig, frame):
+    def handle_term(sig: int, frame: object) -> None:
         running[0] = False
 
 
@@ -490,7 +512,7 @@ def main():
         if pending["mode"] is not None:
             new_mode = pending["mode"]
             pending["mode"] = None
-            if new_mode != st.mode:
+            if isinstance(new_mode, str) and new_mode != st.mode:
                 if new_mode == "free" and dev is not None:
                     off_frame = build_off_report()
                     send(dev, off_frame)
@@ -577,8 +599,9 @@ def main():
                 st.read_fails = 0
                 last_rep = rep
         write_status(st.mode, temp, st.floor_pct, st.last_rpm, last_rep, pad_present,
-                    st.led.get("effect", "keep"), int(st.led.get("brightness", 100)),
-                    st.led.get("color", "#ff6600"))
+                    cfg_str(st.led, "effect", "keep"),
+                    int(cfg_num(st.led, "brightness", 100)),
+                    cfg_str(st.led, "color", "#ff6600"))
 
         time.sleep(INTERVAL)
 

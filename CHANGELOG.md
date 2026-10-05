@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] — 2026-10-05
+
+- Static typing for the daemon: full PEP 484 annotations, `mypy.ini`
+  (every def annotated, explicit Optional, no unchecked Any returned from
+  JSON payloads), wired into `tests/run.sh` (skipped when mypy is absent,
+  `MYPY=` provides an arbitrary binary). `State.last_frame` becomes a
+  declared attribute (the defensive getattr retires); `cfg_num`/`cfg_str`
+  narrow the config dicts.
+- qmllint's `UnqualifiedAccess` re-enabled: it is the category that
+  catches handlers on non-existent signals (the lived `onRejected` bug
+  that killed the whole widget). The known Plasma false positives
+  (the `i18n()` global, `root` inside the representations) are
+  suppressed line-by-line in `main.qml` — the rule stays armed.
+
 ## [0.6.1] — 2026-10-05
 
 - Fix: LED controls never show a value we don't have — the effect combo

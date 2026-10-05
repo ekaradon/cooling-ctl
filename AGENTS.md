@@ -81,13 +81,16 @@ House rules:
    then restore. This is enforced by review, not by tooling — do it anyway.
 2. **No fix without its test.** Every bug fix lands together with the
    structural or unit test that would have caught it.
-3. **Plasmoid load errors are silent in `run.sh`.** qmllint has a known blind
-   spot: "no matching signal found for handler" is muted by
-   `UnqualifiedAccess=disable` in `.qmllint.ini` (needed for i18n/delegate
-   false positives). A handler on a non-existent signal kills the whole
-   widget (falls back to a generic settings icon). `test_structure.py`
-   covers the known cases structurally; the smoke gate — `RUN_SMOKE=1` in
-   `run.sh` and `make smoke`, same success criterion: the plasmawindowed
+3. **Plasmoid load errors are silent in `run.sh`.** qmllint's "no matching
+   signal found for handler" is categorized `[unqualified]`:
+   `UnqualifiedAccess=warning` in `.qmllint.ini` (re-enabled 0.6.2 — it
+   catches handlers on non-existent signals, which kill the whole widget
+   into a generic settings-icon fallback). The known Plasma false
+   positives (the `i18n()` global, `root` inside the representations) are
+   suppressed line-by-line in `main.qml` — never disable the rule again.
+   `test_structure.py` covers the known cases structurally; the smoke
+   gate — `RUN_SMOKE=1` in `run.sh` and `make smoke`, same success
+   criterion: the plasmawindowed
    log must stay EMPTY — is the real proof and is mandatory before any
    deploy. It only has meaning against an INSTALLED copy: the gate fails if
    `org.coolingctl` is not in `/usr/share/plasma/plasmoids` or

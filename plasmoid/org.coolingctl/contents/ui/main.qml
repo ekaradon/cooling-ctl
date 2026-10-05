@@ -149,17 +149,17 @@ PlasmoidItem {
                 PlasmaComponents.TabBar {
                     id: mainTabs
                     Layout.fillWidth: true
-                    PlasmaComponents.TabButton { text: i18n("Cooling") }
-                    PlasmaComponents.TabButton { text: i18n("Lighting") }
+                    PlasmaComponents.TabButton { text: i18n("Cooling") }  // qmllint disable unqualified
+                    PlasmaComponents.TabButton { text: i18n("Lighting") }  // qmllint disable unqualified
                 }
 
                 PlasmaComponents.BusyIndicator {
-                    visible: root.modeBusy || root.ledBusy || root.sliderBusy
+                    visible: root.modeBusy || root.ledBusy || root.sliderBusy  // qmllint disable unqualified
                     running: visible
                     implicitWidth: Kirigami.Units.iconSizes.small
                     implicitHeight: Kirigami.Units.iconSizes.small
                     Layout.alignment: Qt.AlignVCenter
-                    Accessible.name: i18n("Applying changes")
+                    Accessible.name: i18n("Applying changes")  // qmllint disable unqualified
                 }
             }
 
@@ -186,11 +186,11 @@ PlasmoidItem {
                     Item { Layout.fillWidth: true }
 
                     Rectangle {
-                        visible: root.padVisible
+                        visible: root.padVisible  // qmllint disable unqualified
                         radius: height / 2
                         implicitHeight: modeLabel.implicitHeight + 2 * Kirigami.Units.smallSpacing
                         implicitWidth: modeLabel.implicitWidth + 3 * Kirigami.Units.smallSpacing
-                        readonly property bool isGame: root.mode === "game"
+                        readonly property bool isGame: root.mode === "game"  // qmllint disable unqualified
                         color: isGame
                                ? Qt.rgba(Kirigami.Theme.highlightColor.r,
                                          Kirigami.Theme.highlightColor.g,
@@ -200,9 +200,9 @@ PlasmoidItem {
                         PlasmaComponents.Label {
                             id: modeLabel
                             anchors.centerIn: parent
-                            text: root.mode === "game" ? i18n("GAME MODE")
-                             : root.mode === "free" ? i18n("FREE")
-                             : i18n("SILENT CURVE")
+                            text: root.mode === "game" ? i18n("GAME MODE")  // qmllint disable unqualified
+                             : root.mode === "free" ? i18n("FREE")  // qmllint disable unqualified
+                             : i18n("SILENT CURVE")  // qmllint disable unqualified
                             color: parent.isGame ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
                             font.pointSize: Application.font.pointSize * 0.75
                             font.letterSpacing: 1
@@ -221,19 +221,19 @@ PlasmoidItem {
                     Layout.alignment: Qt.AlignVCenter
 
                     PlasmaComponents.Label {
-                        text: root.tctl >= 0 ? root.tctl.toFixed(0) + "°" : "—"
+                        text: root.tctl >= 0 ? root.tctl.toFixed(0) + "°" : "—"  // qmllint disable unqualified
                         font.pointSize: Kirigami.Theme.defaultFont.pointSize * 2.8
                         font.weight: Font.Black
-                        color: root.colCpu
+                        color: root.colCpu  // qmllint disable unqualified
                     }
                     PlasmaComponents.Label {
-                        text: root.avgOf("tctl") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("tctl"))) : ""
+                        text: root.avgOf("tctl") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("tctl"))) : ""  // qmllint disable unqualified
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.75)
                         font.weight: Font.Bold
-                        color: root.colCpu
+                        color: root.colCpu  // qmllint disable unqualified
                     }
                     PlasmaComponents.Label {
-                        text: i18n("CPU · TCTL")
+                        text: i18n("CPU · TCTL")  // qmllint disable unqualified
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                         font.letterSpacing: 1
                         color: Kirigami.Theme.disabledTextColor
@@ -244,19 +244,19 @@ PlasmoidItem {
                     spacing: 0
                     Layout.alignment: Qt.AlignVCenter
                     PlasmaComponents.Label {
-                        text: root.gpu >= 0 ? root.gpu.toFixed(0) + "°" : "—"
+                        text: root.gpu >= 0 ? root.gpu.toFixed(0) + "°" : "—"  // qmllint disable unqualified
                         font.pointSize: Kirigami.Theme.defaultFont.pointSize * 2.8
                         font.weight: Font.Black
-                        color: root.colGpu
+                        color: root.colGpu  // qmllint disable unqualified
                     }
                     PlasmaComponents.Label {
-                        text: root.avgOf("gpu") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("gpu"))) : ""
+                        text: root.avgOf("gpu") >= 0 ? i18n("%1° avg.", Math.round(root.avgOf("gpu"))) : ""  // qmllint disable unqualified
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.75)
                         font.weight: Font.Bold
-                        color: root.colGpu
+                        color: root.colGpu  // qmllint disable unqualified
                     }
                     PlasmaComponents.Label {
-                        text: i18n("GPU")
+                        text: i18n("GPU")  // qmllint disable unqualified
                         font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                         font.letterSpacing: 1
                         color: Kirigami.Theme.disabledTextColor
@@ -271,20 +271,20 @@ PlasmoidItem {
                     rowSpacing: Kirigami.Units.smallSpacing
                     Layout.alignment: Qt.AlignVCenter
 
-                    PlasmaComponents.Label { text: i18n("Laptop fans"); font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
+                    PlasmaComponents.Label { text: i18n("Laptop fans"); font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }  // qmllint disable unqualified
                     PlasmaComponents.Label {
                         Layout.alignment: Qt.AlignRight
-                        text: root.fan >= 0 ? Math.round(root.fan) : "—"
+                        text: root.fan >= 0 ? Math.round(root.fan) : "—"  // qmllint disable unqualified
                         font.weight: Font.Bold
-                        color: root.colFan
+                        color: root.colFan  // qmllint disable unqualified
                     }
-                    PlasmaComponents.Label { text: i18n("Pad fan"); visible: root.padVisible; font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
+                    PlasmaComponents.Label { text: i18n("Pad fan"); visible: root.padVisible; font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }  // qmllint disable unqualified
                     PlasmaComponents.Label {
-                        visible: root.padVisible
+                        visible: root.padVisible  // qmllint disable unqualified
                         Layout.alignment: Qt.AlignRight
-                        text: root.padRpm >= 0 ? Math.round(root.padRpm) : "—"
+                        text: root.padRpm >= 0 ? Math.round(root.padRpm) : "—"  // qmllint disable unqualified
                         font.weight: Font.Bold
-                        color: root.colPad
+                        color: root.colPad  // qmllint disable unqualified
                     }
                 }
             }
