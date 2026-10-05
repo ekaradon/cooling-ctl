@@ -645,10 +645,31 @@ PlasmoidItem {
                         // initialized from the daemon's configured brightness;
                         // held while dragging AND for 4 s after the commit
                         // (the status keeps the old value until the daemon
-                        // reloads — without the lock the thumb flickers back)
-                        Binding on value {
-                            when: !ledBrightness.pressed && !root.ledBusy && root.ledBright >= 0
-                            value: root.ledBright
+                        // reloads — without the lock the thumb flickers back).
+                        // NB: imperative resync only, never a conditional
+                        // `Binding` on `value` — when the `when` clause goes
+                        // false (ledBusy latch on an effect commit) QML
+                        // RESTORES the value the property had before the
+                        // binding activated, here the slider default 0:
+                        // the thumb flashed to 0 % on every effect change
+                        // (lived bug 2026-10-05).
+                        Connections {
+                            target: root
+                            function onLedBrightChanged() {
+                                if (!ledBrightness.pressed && !root.ledBusy && root.ledBright >= 0)
+                                    ledBrightness.value = root.ledBright
+                            }
+                        }
+                        // resync: if a brightness drag failed to commit, the
+                        // thumb snaps back to the daemon's value within 5 s
+                        Timer {
+                            interval: 5000
+                            repeat: true
+                            running: true
+                            onTriggered: {
+                                if (!ledBrightness.pressed && !root.ledBusy && root.ledBright >= 0)
+                                    ledBrightness.value = root.ledBright
+                            }
                         }
                         onPressedChanged: {
                             if (!pressed) {
