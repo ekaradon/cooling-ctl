@@ -44,6 +44,33 @@ Rules that follow from this shape:
   The plasmoid parses with per-field fallbacks. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
 
+## Internal fans: fw-fanctrl (host machine)
+
+coolingctld owns the pad — the laptop's INTERNAL fans are owned by neither
+us nor the EC's auto mode: a community `fw-fanctrl.service` (binary
+`/usr/bin/fw-fanctrl`, config `/etc/fw-fanctrl/config.json`) drives them
+through `framework_tool`. While the service runs, the EC's own auto fan
+control is disabled (restored on stop via `framework_tool --autofanctrl`
+in `ExecStopPost`).
+
+- The active `defaultStrategy` in that config is the machine's real
+  thermal headroom under load. **Two EC hard thermal shutdowns while
+  gaming (2026-10-03, 2026-10-05) happened with a quiet custom curve
+  ("silencieux": fans ~60% at Tctl 90°C, 10 s moving average)** — on a
+  90W dock contract the firmware capped the machine to ~80W and the
+  battery was CHARGING at the cut, so power was not the cause.
+- Crash signature of an EC thermal cut: the journal stops mid-heartbeat —
+  no shutdown sequence, no kernel oops, no MCE, empty pstore, and the
+  machine refuses to power on until it cools. Expect nothing from Linux:
+  the firmware neutered the ACPI thermal trips (invalid `_CRT`, the EC
+  owns last-resort protection) and k10temp throttling is silent. Diagnose
+  from what survives: the daemon journal (`mode ->` lines), UPower
+  battery history (`/var/lib/upower/`), the EC sensors (`sensors`,
+  cros_ec block) — and read the fw-fanctrl strategy FIRST.
+- Possible future integration: `mode -> game` (SIGUSR1) could also switch
+  fw-fanctrl to an aggressive strategy; the pad alone cannot save a
+  machine whose internal fans are held back.
+
 ## Coding conventions
 
 - All comments, docstrings, UI strings and tool output are in English — the
