@@ -11,8 +11,8 @@
 #
 # Portable tool resolution (no absolute paths):
 #   - Qt 6 tools: via `qmake6 -query QT_HOST_BINS` (the real path of
-'#     the machine Qt 6 installation), else PATH. Note: on Arch, the'
-'#     the PATH `qmltestrunner` is the Qt 5 one -> QT_HOST_BINS first.'
+#     the machine Qt 6 installation), else PATH. Note: on Arch, the
+#     PATH `qmltestrunner` is the Qt 5 one -> QT_HOST_BINS first.
 #   - QML imports: via `qmake6 -query QT_INSTALL_QML`.
 #   - python: the PATH python if `hid` is available there, else
 #     $COOLINGCTL_PYTHON (arbitrary interpreter given explicitly).
