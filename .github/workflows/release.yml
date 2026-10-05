@@ -54,7 +54,9 @@ jobs:
             --body-file notes.md
 
   package:
-    if: startsWith(github.event.head_commit.message, 'chore(release): v')
+    # quoted: the value contains ": " and YAML would not parse the file
+    # otherwise (the whole workflow then fails at load time, zero jobs)
+    if: "startsWith(github.event.head_commit.message, 'chore(release): v')"
     runs-on: ubuntu-latest
     container:
       image: archlinux:base

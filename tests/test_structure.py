@@ -34,11 +34,18 @@ package). These static checks catch them before installation.
   S42 a lock Timer may only RELEASE its flag — modeLock's onTriggered
       re-set modeBusy = true: the optimistic lock latched forever after the
       first mode commit and the mode never resynced from the daemon again
+  S48 workflow files must parse as YAML — an invalid one fails every run
+      at load time (zero jobs created, 0 s failure in the run list) and
+      GitHub surfaces it nowhere else. Lived bug: the unquoted `if:` of
+      the package job contained "chore(release): v" and the release bot
+      silently never opened its chore(release) PR after any merge
 """
 import os
 import re
 import stat
 import unittest
+
+import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 QML = os.path.join(ROOT, "plasmoid", "org.coolingctl",
@@ -244,6 +251,22 @@ class TestStructureSources(unittest.TestCase):
                 else:
                     self.assertEqual(mode & 0o777, 0o644,
                                      f"{name} must be 644 (is {oct(mode)})")
+
+
+class TestStructureWorkflows(unittest.TestCase):
+    def test_s48_workflows_parse(self):
+        """Lived bug: an unquoted `if:` value containing "chore(release): v"
+        made release.yml unparseable — every push to main failed the
+        workflow at load time (zero jobs, 0 s) and the release bot never
+        opened its chore(release) PR. GitHub's only signal is a failed
+        run with no jobs, which looks like noise in the list."""
+        workflows = os.path.join(ROOT, ".github", "workflows")
+        for name in sorted(os.listdir(workflows)):
+            if not name.endswith((".yml", ".yaml")):
+                continue
+            with self.subTest(workflow=name):
+                with open(os.path.join(workflows, name)) as f:
+                    yaml.safe_load(f)
 
 
 if __name__ == "__main__":
