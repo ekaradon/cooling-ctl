@@ -63,9 +63,13 @@ jobs:
       image: archlinux:base
     steps:
       - name: install dependencies
+        # the PKGBUILD depends=() — makepkg resolves them at build time
+        # (S50 in test_structure.py pins this against the PKGBUILD)
         run: |
           pacman -Syu --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm git base-devel github-cli
+          pacman -Syu --noconfirm git base-devel github-cli \
+              kirigami libplasma plasma-workspace plasma5support \
+              kdeclarative python python-hidapi
       - uses: actions/checkout@v4
       - name: tag the release
         run: |
