@@ -1,18 +1,60 @@
-# Release — the PKGBUILD build, tags only. Split from ci.yml so it never
-# appears as a "skipped" check on pull requests. A version tag follows a
-# merge to main (which the ci workflow has already tested post-merge), so
-# the package job does not re-run the suite: it builds the PKGBUILD exactly
-# as published (git source, no local shortcut) and uploads the .pkg.tar.zst
-# as an artifact — end-to-end validation of the AUR flow.
+# Release automation — versions are driven by the conventional commits
+# that land on main; the maintainer stays the human gate.
+#
+#   prepare: after any merge except a release one, computes the next
+#            version from the commits since the last tag
+#            (tools/prepare-release.py; fix -> patch, feat and breaking ->
+#            minor on the 0.x line; ci/docs/chore/test never release).
+#            With something to release it inserts the CHANGELOG section,
+#            bumps metadata.json and PKGBUILD, and opens a
+#            chore(release): vX.Y.Z PR for the maintainer to merge.
+#   package: merging that PR (head commit "chore(release): v...") tags
+#            vX.Y.Z and builds the PKGBUILD exactly as published (git
+#            source, no local shortcut), uploading the package artifact.
 
 name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
+  prepare:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history + tags for the range scan
+      - id: rel
+        name: next release?
+        run: |
+          v=$(python3 tools/prepare-release.py --check)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "next release: $v"
+      - name: open the release PR
+        if: steps.rel.outputs.version != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.rel.outputs.version }}"
+          git config user.name "cooling-ctl release bot"
+          git config user.email "actions@github.com"
+          git checkout -b "release/v$V"
+          python3 tools/prepare-release.py > notes.md
+          git add CHANGELOG.md PKGBUILD plasmoid/org.coolingctl/metadata.json
+          git commit -m "chore(release): v$V"
+          git push origin "release/v$V"
+          gh pr create --base main --head "release/v$V" \
+            --title "chore(release): v$V" \
+            --body-file notes.md
+
   package:
+    if: startsWith(github.event.head_commit.message, 'chore(release): v')
     runs-on: ubuntu-latest
     container:
       image: archlinux:base
@@ -22,6 +64,12 @@ jobs:
           pacman -Syu --noconfirm archlinux-keyring
           pacman -Syu --noconfirm git base-devel
       - uses: actions/checkout@v4
+      - name: tag the release
+        run: |
+          V=$(grep -o '"Version": "[0-9.]*"' plasmoid/org.coolingctl/metadata.json \
+              | grep -o '[0-9.]*')
+          git tag "v$V" || true
+          git push origin "v$V" || true
       - name: makepkg (PKGBUILD as published — git source, no shortcut)
         run: |
           useradd -m builder
