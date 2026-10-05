@@ -165,6 +165,26 @@ Generated from the real widget, never mocked:
 - Before publishing: fill the `# Maintainer:` line and the real `url` in
   `PKGBUILD`, tag the release, update `CHANGELOG.md`.
 
+## Release flow (automated)
+
+Releases are driven by the conventional commits that land on `main` — no
+manual version math, no hand-written changelog sections:
+
+1. Every merge to `main` (except release commits) triggers the `prepare`
+   job (`release.yml`): `tools/prepare-release.py --check` computes the
+   next version from the commits since the last tag (`fix` patch, `feat`
+   and breaking minor on the 0.x line, mirroring semantic-release); `ci`,
+   `docs`, `chore`, `test` commits never release. With nothing to
+   release the job ends there.
+2. When there is: the same tool inserts the CHANGELOG section, bumps
+   `metadata.json` Version and `PKGBUILD` (pkgver, pkgrel reset), and a
+   `chore(release): vX.Y.Z` PR opens automatically — the human gate
+   stays: the maintainer merges it.
+3. Merging that PR (head commit `chore(release): vX.Y.Z`) triggers the
+   `package` job: it tags `vX.Y.Z` and builds the PKGBUILD exactly as
+   published (git source, no local shortcut), uploading the package as
+   an artifact.
+
 ## Repository hygiene
 
 - No personal data: no usernames, emails, personal absolute paths, hostnames.
