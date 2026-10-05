@@ -1,3 +1,12 @@
+<div align="center">
+
+[![CI](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml/badge.svg)](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+[![License](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
+![Plasma](https://img.shields.io/badge/Plasma-6-blue.svg)
+
+</div>
+
 # cooling-ctl
 
 A silent-first control stack for the **Razer Laptop Cooling Pad** on Linux: a
@@ -134,8 +143,6 @@ systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
 ```
 
 ## Development
-
-[![CI](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml/badge.svg)](https://github.com/ekaradon/cooling-ctl/actions/workflows/ci.yml)
 
 ```sh
 make test        # unit + structural + integration + QML + lint
