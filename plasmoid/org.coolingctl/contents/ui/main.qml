@@ -122,7 +122,7 @@ PlasmoidItem {
     Timer {
         id: modeLock
         interval: 4000
-        onTriggered: root.modeBusy = true
+        onTriggered: root.modeBusy = false
     }
 
     preferredRepresentation: compactRepresentation
