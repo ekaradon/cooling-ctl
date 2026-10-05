@@ -1,12 +1,12 @@
 #!/bin/sh
-# Suite de tests cooling-ctl.
+# cooling-ctl test suite.
 #   ./run.sh              -> unit + helper + integration + QML + lint
 #   SKIP_INTEGRATION=1    -> skip the live-daemon tests
 #   RUN_SMOKE=1           -> + plasmoid load test (plasmawindowed,
 #                            requires an installed copy of the plasmoid)
-#   COOLINGCTL_REFERENCE=/chemin/razer-coolingpad-fancurve.py
+#   COOLINGCTL_REFERENCE=/path/to/razer-coolingpad-fancurve.py
 #                         -> + HID protocol parity tests (skipped otherwise)
-#   COOLINGCTL_PYTHON=/chemin/python
+#   COOLINGCTL_PYTHON=/path/to/python
 #                         -> alternate interpreter providing the hid module
 #
 # Portable tool resolution (no absolute paths):
@@ -29,7 +29,7 @@ qt6_bin() {
 }
 
 QTBIN=$(qt6_bin)
-resolve_tool() { # resolve_tool <nom> : QT_HOST_BINS d'abord, PATH ensuite
+resolve_tool() { # resolve_tool <name>: QT_HOST_BINS first, then PATH
     if [ -n "$QTBIN" ] && [ -x "$QTBIN/$1" ]; then echo "$QTBIN/$1"; return; fi
     command -v "$1" 2>/dev/null || echo ""
 }
@@ -47,7 +47,7 @@ else
     exit 1
 fi
 
-echo "== outils : qmltestrunner=${QMLTR:-AUCUN} qmllint=${QMLLINT:-AUCUN} imports=${QMLDIR:-defaut} python=$PY =="
+echo "== tools: qmltestrunner=${QMLTR:-NONE} qmllint=${QMLLINT:-NONE} imports=${QMLDIR:-default} python=$PY =="
 
 echo "== cooling-ctl : tests unitaires + helper =="
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_coolingctld.py" -v || exit 1
@@ -66,7 +66,7 @@ if [ -n "$QMLTR" ]; then
     echo "$QML_OUT" | grep -E "PASS|FAIL|Totals"
     # the display grep always matches: gate on actual failures
     if echo "$QML_OUT" | grep -qE "^FAIL"; then
-        echo "ECHEC : tests QML en echec" >&2
+        echo "FAIL: QML tests failed" >&2
         exit 1
     fi
 else

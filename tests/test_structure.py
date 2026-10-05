@@ -71,7 +71,7 @@ class TestStructureQml(unittest.TestCase):
         with open(QML) as f:
             self.qml = f.read()
 
-    def test_s19_expanded_sur_plasmoiditem(self):
+    def test_s19_expanded_via_plasmoiditem(self):
         """The expanded toggle must go through root (PlasmoidItem/AppletQuickItem)."""
         self.assertNotIn("Plasmoid.expanded", self.qml,
                          "Plasmoid.expanded does not exist in Plasma 6 "
@@ -79,23 +79,23 @@ class TestStructureQml(unittest.TestCase):
         self.assertGreaterEqual(self.qml.count("root.expanded"), 3,
                                 "compact missing the expanded toggle")
 
-    def test_s20_hints_layout_du_compact(self):
+    def test_s20_compact_layout_hints(self):
         """The panel container sizes via Layout.*, not implicit*."""
         self.assertIn("Layout.preferredWidth: vertical ? -1 : compactRow.implicitWidth",
                       self.qml)
         self.assertIn("Layout.minimumWidth: compactRow.implicitWidth", self.qml)
 
-    def test_s21_compact_est_un_bouton(self):
+    def test_s21_compact_is_a_button(self):
         self.assertIn("Accessible.role: Accessible.Button", self.qml)
         self.assertIn("MouseArea {", self.qml)
 
     def test_s22_preferred_representation(self):
         self.assertIn("preferredRepresentation: compactRepresentation", self.qml)
 
-    def test_s23_aucun_debug(self):
+    def test_s23_no_debug(self):
         self.assertNotIn("console.log", self.qml)
 
-    def test_s28_slider_snap_pendant_drag(self):
+    def test_s28_slider_snap_during_drag(self):
         """The handle must snap during the drag. Native QQC2 solution:
         snapMode SnapAlways (the pattern of Plasma's landing page Animation
         speed slider, kcms/landingpage) — the position snaps onto the step grid
@@ -114,7 +114,7 @@ class TestStructureQml(unittest.TestCase):
         self.assertIn('visible: root.padVisible && root.mode !== "free" && root.polls > 0', self.qml,
                       "the slider must not appear before the first data point")
 
-    def test_s30_handlers_valides_du_slider(self):
+    def test_s30_slider_valid_handlers(self):
         """Lived bug 2026-10-04: "Cannot assign to non-existent property
         "onReleased" on click — the whole plasmoid fell back to a settings
         icon. QQC2 Slider has no pressed()/released() signals: pressed
@@ -132,7 +132,7 @@ class TestStructureQml(unittest.TestCase):
         self.assertIn("onMoved:", block,
                       "wheel/keyboard: moved() outside a drag must commit")
 
-    def test_s31_chat_visible_en_theme_sombre(self):
+    def test_s31_cat_visible_in_dark_theme(self):
         """Lived bug 2026-10-04: the compact cat (a symbolic SVG with
         fill:currentColor and the Breeze LIGHT text color baked into the
         file) rendered dark-on-dark and was invisible in the dark theme —
@@ -221,7 +221,7 @@ class TestStructureQml(unittest.TestCase):
         self.assertGreaterEqual(self.qml.count("floorSlider.value = 500 + root.floor * 27"), 2,
                                 "a resync mechanism is needed beyond onFloorChanged")
 
-    def test_s41_brightness_slider_sans_binding_conditionnel(self):
+    def test_s41_brightness_slider_without_conditional_binding(self):
         """Lived bug 2026-10-05: the brightness thumb flashed to 0 % on
         every effect change, then came back to the real value ~4 s later.
         The slider value was driven by a conditional `Binding on value`:
@@ -238,7 +238,7 @@ class TestStructureQml(unittest.TestCase):
                                 "the brightness slider needs a resync beyond "
                                 "onLedBrightChanged (failed commits)")
 
-    def test_s42_les_locks_se_relachent(self):
+    def test_s42_locks_release(self):
         """Lived bug: modeLock's onTriggered re-set modeBusy = true —
         after the first mode commit the optimistic lock latched forever,
         the poll stopped updating root.mode and a failed commit would
@@ -251,7 +251,7 @@ class TestStructureQml(unittest.TestCase):
 
 
 class TestStructureSources(unittest.TestCase):
-    def test_s24_modes_des_sources(self):
+    def test_s24_source_modes(self):
         """644 everywhere, 755 for the helper — the package copies these modes."""
         plasmoid_dir = os.path.join(ROOT, "plasmoid", "org.coolingctl")
         for dirpath, _, files in os.walk(plasmoid_dir):
@@ -259,7 +259,7 @@ class TestStructureSources(unittest.TestCase):
                 path = os.path.join(dirpath, name)
                 mode = stat.S_IMODE(os.stat(path).st_mode)
                 if path == HELPER:
-                    self.assertTrue(mode & stat.S_IXUSR, f"{name} doit etre executable")
+                    self.assertTrue(mode & stat.S_IXUSR, f"{name} must be executable")
                 else:
                     self.assertEqual(mode & 0o777, 0o644,
                                      f"{name} must be 644 (is {oct(mode)})")

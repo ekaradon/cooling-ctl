@@ -23,7 +23,7 @@ KEYS = {"mode", "temp", "floor_pct", "floor_rpm", "led", "led_brightness", "led_
         "rpm_cmd", "rpm_reported", "pad_present"}
 
 
-def daemon_actif():
+def daemon_active():
     try:
         r = subprocess.run(["systemctl", "--user", "is-active", "coolingctl"],
                            capture_output=True, text=True)
@@ -32,7 +32,7 @@ def daemon_actif():
         return False
 
 
-def lire_status():
+def read_status():
     fields = {}
     with open(STATUS_FILE) as f:
         for line in f:
@@ -47,7 +47,7 @@ def signal_daemon(sig):
                    "coolingctl"], check=True)
 
 
-def attendre(predicate, timeout=8):
+def wait_for(predicate, timeout=8):
     t0 = time.time()
     while time.time() - t0 < timeout:
         if predicate():
@@ -56,31 +56,31 @@ def attendre(predicate, timeout=8):
     return False
 
 
-@unittest.skipUnless(daemon_actif(), "daemon coolingctl non actif")
+@unittest.skipUnless(daemon_active(), "coolingctl daemon not active")
 class TestIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.etat_initial = lire_status()
-        cls.floor_initial = cls._lire_floor()
+        cls.initial_state = read_status()
+        cls.initial_floor = cls._read_floor()
 
     @classmethod
     def tearDownClass(cls):
         # full restoration of the initial state
-        floor = cls.floor_initial
+        floor = cls.initial_floor
         with open(GAMING_JSON) as f:
-            contenu = f.read()
+            content = f.read()
         with open(GAMING_JSON, "w") as f:
-            f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {floor}', contenu))
+            f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {floor}', content))
         signal_daemon("SIGHUP")  # resync the daemon with the restored file
-        mode = cls.etat_initial["mode"]
+        mode = cls.initial_state["mode"]
         sig = {"game": "SIGUSR1", "silent": "SIGUSR2", "free": "SIGWINCH"}[mode]
         signal_daemon(sig)
 
     @staticmethod
-    def _lire_floor():
+    def _read_floor():
         with open(GAMING_JSON) as f:
-            contenu = f.read()
-        m = re.search(r'"percent": *([0-9]+)', contenu)
+            content = f.read()
+        m = re.search(r'"percent": *([0-9]+)', content)
         return int(m.group(1))
 
     @staticmethod
@@ -90,7 +90,7 @@ class TestIntegration(unittest.TestCase):
         return int(r.stdout.strip().split("=")[1])
 
     def test_s9_schema_status(self):
-        fields = lire_status()
+        fields = read_status()
         self.assertTrue(KEYS.issubset(fields), fields)
         self.assertIn(fields["mode"], {"silent", "game", "free"})
         float(fields["temp"])
@@ -102,26 +102,26 @@ class TestIntegration(unittest.TestCase):
         int(fields["led_brightness"])
         self.assertRegex(fields["led_color"], r"^#[0-9a-fA-F]{6}$")
 
-    def test_s10_bascule_mode_sans_restart(self):
+    def test_s10_mode_switch_without_restart(self):
         n0 = self._nrestarts()
         signal_daemon("SIGUSR1")
-        self.assertTrue(attendre(lambda: lire_status()["mode"] == "game"),
+        self.assertTrue(wait_for(lambda: read_status()["mode"] == "game"),
                         "game mode not reached")
         signal_daemon("SIGUSR2")
-        self.assertTrue(attendre(lambda: lire_status()["mode"] == "silent"),
+        self.assertTrue(wait_for(lambda: read_status()["mode"] == "silent"),
                         "silent mode not reached")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
-    def test_s11_floor_a_chaud(self):
+    def test_s11_hot_floor_write(self):
         n0 = self._nrestarts()
         with open(GAMING_JSON) as f:
-            contenu = f.read()
+            content = f.read()
         with open(GAMING_JSON, "w") as f:
-            f.write(re.sub(r'"percent": *[0-9]*', '"percent": 33', contenu))
+            f.write(re.sub(r'"percent": *[0-9]*', '"percent": 33', content))
         signal_daemon("SIGHUP")
         self.assertTrue(
-            attendre(lambda: lire_status()["floor_rpm"] == "1400"),
-            f"floor_rpm={lire_status().get('floor_rpm')} != 1400")
+            wait_for(lambda: read_status()["floor_rpm"] == "1400"),
+            f"floor_rpm={read_status().get('floor_rpm')} != 1400")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
 
