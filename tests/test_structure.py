@@ -26,6 +26,11 @@ package). These static checks catch them before installation.
   S31 the compact cat must be rendered as a Kirigami.Icon isMask tinted
       Kirigami.Theme.textColor — KSvg does not recolor symbolic SVGs outside
       an applet context (lived bug: dark-on-dark cat, invisible in dark theme)
+  S41 the brightness slider must not be driven by a conditional
+      `Binding on value` — when the `when` clause goes false (ledBusy latch),
+      QML RESTORES the pre-binding value (the slider default 0): the thumb
+      flashed to 0 % on every effect change. Imperative resync only
+      (Connections + Timer), the floor slider's pattern
 """
 import os
 import stat
@@ -192,6 +197,23 @@ class TestStructureQml(unittest.TestCase):
                       "the resting label must show the step, not the raw computation")
         self.assertGreaterEqual(self.qml.count("floorSlider.value = 500 + root.floor * 27"), 2,
                                 "a resync mechanism is needed beyond onFloorChanged")
+
+    def test_s41_brightness_slider_sans_binding_conditionnel(self):
+        """Lived bug 2026-10-05: the brightness thumb flashed to 0 % on
+        every effect change, then came back to the real value ~4 s later.
+        The slider value was driven by a conditional `Binding on value`:
+        when an effect commit latched ledBusy, the `when` clause went
+        false and QML RESTORED the value the property had before the
+        binding activated — the slider's default 0. The binding only
+        reactivated when the lock released. Imperative resync only
+        (Connections + resync Timer), exactly the floor slider's
+        pattern, which never had the bug."""
+        self.assertNotIn("Binding on value", self.qml,
+                         "a conditional Binding restores the pre-binding "
+                         "value when it deactivates — resync imperatively")
+        self.assertGreaterEqual(self.qml.count("ledBrightness.value = root.ledBright"), 2,
+                                "the brightness slider needs a resync beyond "
+                                "onLedBrightChanged (failed commits)")
 
 
 class TestStructureSources(unittest.TestCase):
