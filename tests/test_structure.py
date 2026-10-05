@@ -31,8 +31,12 @@ package). These static checks catch them before installation.
       QML RESTORES the pre-binding value (the slider default 0): the thumb
       flashed to 0 % on every effect change. Imperative resync only
       (Connections + Timer), the floor slider's pattern
+  S42 a lock Timer may only RELEASE its flag — modeLock's onTriggered
+      re-set modeBusy = true: the optimistic lock latched forever after the
+      first mode commit and the mode never resynced from the daemon again
 """
 import os
+import re
 import stat
 import unittest
 
@@ -214,6 +218,17 @@ class TestStructureQml(unittest.TestCase):
         self.assertGreaterEqual(self.qml.count("ledBrightness.value = root.ledBright"), 2,
                                 "the brightness slider needs a resync beyond "
                                 "onLedBrightChanged (failed commits)")
+
+    def test_s42_les_locks_se_relachent(self):
+        """Lived bug: modeLock's onTriggered re-set modeBusy = true —
+        after the first mode commit the optimistic lock latched forever,
+        the poll stopped updating root.mode and a failed commit would
+        have left the UI lying indefinitely. A lock Timer RELEASES its
+        flag; latching it is commit code, not release code."""
+        self.assertEqual(re.findall(r"onTriggered:[^\n]*Busy = true", self.qml), [],
+                         "a lock Timer must release its flag, never latch it")
+        self.assertIn("onTriggered: root.modeBusy = false", self.qml,
+                      "modeLock must release modeBusy after its 4 s hold")
 
 
 class TestStructureSources(unittest.TestCase):
