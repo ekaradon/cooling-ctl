@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.2] — 2026-10-05
+
+### Fixed
+- seed the sliders on creation — no 0 % flash on a fresh popup - `fix(plasmoid)` (effee7d)
+
 ## [0.7.1] — 2026-10-05
 
 ### Fixed
