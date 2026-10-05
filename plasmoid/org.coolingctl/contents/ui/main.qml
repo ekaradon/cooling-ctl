@@ -483,6 +483,14 @@ PlasmoidItem {
                 // slide then snap on release), hence the override.
                 snapMode: QQC2.Slider.SnapAlways
 
+                // seed on creation (same as the brightness slider): the
+                // change-connections and the 5 s resync both arrive too
+                // late on a freshly opened popup
+                Component.onCompleted: {
+                    if (!root.sliderBusy && root.floor >= 0)
+                        floorSlider.value = 500 + root.floor * 27
+                }
+
                 // QQC2 note: Slider exposes neither onPressed nor onReleased as
                 // signals (pressed is a property — lived bug: a handler on a
                 // non-existent signal kills the whole plasmoid, settings-icon fallback)
@@ -653,6 +661,16 @@ PlasmoidItem {
                         // binding activated, here the slider default 0:
                         // the thumb flashed to 0 % on every effect change
                         // (lived bug 2026-10-05).
+                        Component.onCompleted: {
+                            // initial sync: the full view is created when the
+                            // popup opens, long after the polls started —
+                            // onLedBrightChanged never fires on a fresh
+                            // creation and the 5 s resync has not ticked yet:
+                            // without this the thumb sat at 0 % right after
+                            // switching heat -> wave on a freshly opened popup
+                            if (!root.ledBusy && root.ledBright >= 0)
+                                ledBrightness.value = root.ledBright
+                        }
                         Connections {
                             target: root
                             function onLedBrightChanged() {
