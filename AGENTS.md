@@ -75,11 +75,13 @@ against the live daemon, QML logic via qmltestrunner, qmllint, mypy typing.
 Options: `SKIP_INTEGRATION`, `RUN_SMOKE`, `COOLINGCTL_PYTHON`,
 `COOLINGCTL_REFERENCE`, `MYPY`.
 
-CI (`.github/workflows/ci.yml`) runs the suite on every push in an Arch
-container (`SKIP_INTEGRATION=1` — the live tests need the physical pad) and
-builds the PKGBUILD as published — git source, no local shortcut — on
-`v*` tags, uploading the package as an artifact. The smoke gate, the
-integration tests and the screenshots stay manual: they need the machine.
+CI runs in an Arch container (`SKIP_INTEGRATION=1` — the live tests need
+the physical pad): `ci.yml` on PRs and post-merge on main;
+`release.yml` on `v*` tags builds the PKGBUILD as published — git
+source, no local shortcut — and uploads the package as an artifact (kept
+in a separate workflow so it never shows as a skipped check on PRs).
+The smoke gate, the integration tests and the screenshots stay manual:
+they need the machine.
 
 House rules:
 

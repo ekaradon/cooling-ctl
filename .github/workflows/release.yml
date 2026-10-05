@@ -1,0 +1,36 @@
+# Release — the PKGBUILD build, tags only. Split from ci.yml so it never
+# appears as a "skipped" check on pull requests. A version tag follows a
+# merge to main (which the ci workflow has already tested post-merge), so
+# the package job does not re-run the suite: it builds the PKGBUILD exactly
+# as published (git source, no local shortcut) and uploads the .pkg.tar.zst
+# as an artifact — end-to-end validation of the AUR flow.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base
+    steps:
+      - name: install dependencies
+        run: |
+          pacman -Syu --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm git base-devel
+      - uses: actions/checkout@v4
+      - name: makepkg (PKGBUILD as published — git source, no shortcut)
+        run: |
+          useradd -m builder
+          cp -r "$GITHUB_WORKSPACE" /tmp/build
+          chown -R builder:builder /tmp/build
+          cd /tmp/build
+          runuser -u builder -- makepkg -f
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: /tmp/build/*.pkg.tar.zst
+          if-no-files-found: error
