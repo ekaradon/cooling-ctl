@@ -172,6 +172,9 @@ Generated from the real widget, never mocked:
   freely while a change has not been published (pushed on an open PR).
 - Contribution flow: changes land through a PR. An agent freely creates
   branches, commits and pushes PR branches on its own; it NEVER pushes to
-  `main` (branch protection: PR required, `ci` checks required) and never
-  pushes tags without the maintainer's go-ahead. CI must be green and the
-  maintainer performs the merge.
+  `main` (ruleset: PR required, `tests` check required, no force-push,
+  no deletion, no bypass for anyone) and never pushes tags without the
+  maintainer's go-ahead. CI must be green and the maintainer performs
+  the merge — always a **rebase merge**: semantic commits are preserved
+  on a linear history, never squashed; keep every commit on a PR branch
+  buildable and test-green.
