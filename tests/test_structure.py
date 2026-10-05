@@ -47,6 +47,10 @@ package). These static checks catch them before installation.
       makepkg resolves depends=() at build time and the container only
       had git/base-devel: the very first CI package build died on
       "Missing dependencies" before ever producing a release
+  S51 the package job must really tag — in the container git refuses
+      every command on the checkout ("dubious ownership") unless
+      safe.directory is set, and the tag push was `|| true`: the
+      v0.7.0 run passed its tag step while tagging and pushing nothing
 """
 import os
 import re
@@ -306,6 +310,17 @@ class TestStructureReleaseWorkflow(unittest.TestCase):
             self.assertIn(dep, installed,
                           f"the package job must install the depends=() "
                           f"entry {dep!r} or makepkg cannot build")
+
+    def test_s51_the_tag_step_really_tags(self):
+        """Lived bug: in the container git bails on the checkout with
+        "dubious ownership", and the tag push was || true — the v0.7.0
+        run passed its tag step while pushing nothing, so no tag existed
+        and the release could not be published."""
+        package_job = self.release.split("\n  package:", 1)[1]
+        self.assertIn("safe.directory", package_job,
+                      "git refuses the container checkout without it")
+        self.assertNotIn('git push origin "v$V" || true', package_job,
+                         "a swallowed tag-push failure reads as success")
 
 
 if __name__ == "__main__":
