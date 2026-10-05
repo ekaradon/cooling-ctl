@@ -53,6 +53,7 @@ echo "== cooling-ctl : tests unitaires + helper =="
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_coolingctld.py" -v || exit 1
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_helper.py" -v || exit 1
 env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_structure.py" -v || exit 1
+env -u LD_LIBRARY_PATH "$PY" -m unittest discover -s "$DIR" -p "test_release.py" -v || exit 1
 
 if [ "${SKIP_INTEGRATION:-0}" != "1" ]; then
     echo "== integration (live daemon) =="
