@@ -28,7 +28,7 @@ jobs:
     if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0          # full history + tags for the range scan
       - id: rel
@@ -70,7 +70,7 @@ jobs:
           pacman -Syu --noconfirm git base-devel github-cli \
               kirigami libplasma plasma-workspace plasma5support \
               kdeclarative python python-hidapi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: tag the release
         run: |
           # the checkout's owner uid differs from the job user in the
@@ -105,7 +105,7 @@ jobs:
               gh release create "v$V" --verify-tag --title "v$V" \
                   --notes-file "notes-v$V.md"
           gh release upload "v$V" /tmp/build/*.pkg.tar.zst --clobber
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arch-package
           path: /tmp/build/*.pkg.tar.zst

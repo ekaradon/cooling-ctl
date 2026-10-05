@@ -29,7 +29,7 @@ jobs:
               qt6-base qt6-declarative \
               kirigami libplasma kdeclarative plasma5support \
               python-hidapi python-yaml mypy
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: test suite (unit, structural, QML, lint, typing)
         env:
           SKIP_INTEGRATION: "1"   # needs the physical pad
