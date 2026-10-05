@@ -51,6 +51,12 @@ package). These static checks catch them before installation.
       every command on the checkout ("dubious ownership") unless
       safe.directory is set, and the tag push was `|| true`: the
       v0.7.0 run passed its tag step while tagging and pushing nothing
+  S53 an imperatively-resynced slider must seed its value on
+      completion — the full view is created when the popup opens,
+      long after the polls started: onXChanged never fires and the
+      5 s resync has not ticked yet, so the brightness thumb sat at
+      0 % right after switching heat -> wave on a fresh popup
+      (same hole for the floor slider at its minimum)
 """
 import os
 import re
@@ -248,6 +254,20 @@ class TestStructureQml(unittest.TestCase):
                          "a lock Timer must release its flag, never latch it")
         self.assertIn("onTriggered: root.modeBusy = false", self.qml,
                       "modeLock must release modeBusy after its 4 s hold")
+
+    def test_s53_sliders_seed_on_creation(self):
+        """Lived bug 2026-10-05: the full view is created when the popup
+        opens, long after the polls started — onXChanged never fires and
+        the 5 s resync has not ticked yet, so the brightness thumb sat
+        at 0 % right after switching heat -> wave on a freshly opened
+        popup (same hole for the floor slider at its minimum)."""
+        for slider in ("id: ledBrightness", "id: floorSlider"):
+            block = self.qml.split(slider, 1)[1].split("Slider {", 1)[0] \
+                + self.qml.split(slider, 1)[1]
+            with self.subTest(slider=slider):
+                self.assertIn("Component.onCompleted", block,
+                              f"{slider} must seed its value on creation, "
+                              "not only on change or on the 5 s tick")
 
 
 class TestStructureSources(unittest.TestCase):
