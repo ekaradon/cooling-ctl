@@ -39,6 +39,10 @@ package). These static checks catch them before installation.
       GitHub surfaces it nowhere else. Lived bug: the unquoted `if:` of
       the package job contained "chore(release): v" and the release bot
       silently never opened its chore(release) PR after any merge
+  S49 the package job must publish a GitHub Release — a tag alone never
+      showed in the Releases tab (the repo had none at all); the release
+      is created from the CHANGELOG section and the built .pkg.tar.zst
+      is attached to it
 """
 import os
 import re
@@ -267,6 +271,23 @@ class TestStructureWorkflows(unittest.TestCase):
             with self.subTest(workflow=name):
                 with open(os.path.join(workflows, name)) as f:
                     yaml.safe_load(f)
+
+
+class TestStructureReleaseWorkflow(unittest.TestCase):
+    """S49: the package job publishes a GitHub Release, not just a tag."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, ".github", "workflows",
+                              "release.yml")) as f:
+            self.release = f.read()
+
+    def test_s49_publishes_a_github_release(self):
+        self.assertIn("gh release create", self.release,
+                      "a tag alone never shows in the Releases tab")
+        self.assertIn("gh release upload", self.release,
+                      "the built package must be attached to the release")
+        self.assertIn("GH_TOKEN", self.release,
+                      "gh needs the token to write the release")
 
 
 if __name__ == "__main__":

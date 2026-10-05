@@ -9,8 +9,9 @@
 #            bumps metadata.json and PKGBUILD, and opens a
 #            chore(release): vX.Y.Z PR for the maintainer to merge.
 #   package: merging that PR (head commit "chore(release): v...") tags
-#            vX.Y.Z and builds the PKGBUILD exactly as published (git
-#            source, no local shortcut), uploading the package artifact.
+#            vX.Y.Z, publishes the GitHub Release (notes from the
+#            CHANGELOG section, the built package attached to it) and
+#            uploads the workflow artifact.
 
 name: release
 
@@ -64,7 +65,7 @@ jobs:
       - name: install dependencies
         run: |
           pacman -Syu --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm git base-devel
+          pacman -Syu --noconfirm git base-devel github-cli
       - uses: actions/checkout@v4
       - name: tag the release
         run: |
@@ -79,6 +80,22 @@ jobs:
           chown -R builder:builder /tmp/build
           cd /tmp/build
           runuser -u builder -- makepkg -f
+      - name: publish the GitHub release (notes + package asset)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(grep -o '"Version": "[0-9.]*"' plasmoid/org.coolingctl/metadata.json \
+              | grep -o '[0-9.]*')
+          # notes: the CHANGELOG section this release inserted
+          awk -v ver="$V" '
+            $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md > "notes-v$V.md"
+          gh release view "v$V" >/dev/null 2>&1 || \
+              gh release create "v$V" --verify-tag --title "v$V" \
+                  --notes-file "notes-v$V.md"
+          gh release upload "v$V" /tmp/build/*.pkg.tar.zst --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: arch-package
