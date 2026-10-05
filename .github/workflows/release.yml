@@ -73,10 +73,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: tag the release
         run: |
+          # the checkout's owner uid differs from the job user in the
+          # container: without this, git refuses every command on the
+          # repo ("dubious ownership") — the v0.7.0 run passed this
+          # step while tagging and pushing nothing
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           V=$(grep -o '"Version": "[0-9.]*"' plasmoid/org.coolingctl/metadata.json \
               | grep -o '[0-9.]*')
           git tag "v$V" || true
-          git push origin "v$V" || true
+          git push origin "v$V"
       - name: makepkg (PKGBUILD as published — git source, no shortcut)
         run: |
           useradd -m builder
