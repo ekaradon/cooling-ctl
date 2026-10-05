@@ -43,6 +43,10 @@ package). These static checks catch them before installation.
       showed in the Releases tab (the repo had none at all); the release
       is created from the CHANGELOG section and the built .pkg.tar.zst
       is attached to it
+  S50 the package job must install what the PKGBUILD depends on —
+      makepkg resolves depends=() at build time and the container only
+      had git/base-devel: the very first CI package build died on
+      "Missing dependencies" before ever producing a release
 """
 import os
 import re
@@ -288,6 +292,20 @@ class TestStructureReleaseWorkflow(unittest.TestCase):
                       "the built package must be attached to the release")
         self.assertIn("GH_TOKEN", self.release,
                       "gh needs the token to write the release")
+
+    def test_s50_package_job_installs_pkgbuild_depends(self):
+        """Lived bug: the package container installed only git/base-devel,
+        so makepkg died on "Missing dependencies" on the first CI build.
+        Every name in depends=() must be a token of the package job."""
+        with open(os.path.join(ROOT, "PKGBUILD")) as f:
+            pkgbuild = f.read()
+        depends = re.search(r"^depends=\(([^)]*)\)", pkgbuild, re.M).group(1)
+        package_job = self.release.split("\n  package:", 1)[1]
+        installed = package_job.split()
+        for dep in depends.split():
+            self.assertIn(dep, installed,
+                          f"the package job must install the depends=() "
+                          f"entry {dep!r} or makepkg cannot build")
 
 
 if __name__ == "__main__":
