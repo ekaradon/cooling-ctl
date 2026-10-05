@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2026-10-05
+
+### Added
+- publish a GitHub Release with notes and the package asset - `feat(release)` (a692a6e)
+- automated release flow - prepare job opens release PRs, package job tags and builds - `feat(release)` (081b426)
+- prepare-release tool - version, changelog and PKGBUILD bumps from conventional commits - `feat(release)` (fd2860c)
+
+### Fixed
+- quote the package job if — unparseable release.yml stopped all releases - `fix(ci)` (7e44ef8)
+- release the mode lock when its timer fires - `fix(plasmoid)` (b69af1a)
+- keep the LED brightness steady while an effect commit is pending - `fix(plasmoid)` (8e26a0f)
+
 ## [0.6.2] — 2026-10-05
 
 - Static typing for the daemon: full PEP 484 annotations, `mypy.ini`

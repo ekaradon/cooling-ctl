@@ -6,7 +6,7 @@
         "Authors": [{ "Name": "Cooling Control maintainers" }],
         "Category": "System Information",
         "License": "GPL-2.0-or-later",
-        "Version": "0.6.2",
+        "Version": "0.7.0",
         "Id": "org.coolingctl",
         "EnabledByDefault": true
     },
