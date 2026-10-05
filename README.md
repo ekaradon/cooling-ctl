@@ -31,6 +31,15 @@ Built around a Framework Laptop 16 (AMD), not limited to it.
 
 ## Installation (Arch Linux)
 
+From a published release (package built by CI):
+
+```sh
+gh release download --repo ekaradon/cooling-ctl --pattern '*.pkg.tar.zst' --output /tmp/cooling-ctl-latest.pkg.tar.zst --clobber
+sudo pacman -U /tmp/cooling-ctl-latest.pkg.tar.zst
+```
+
+Or build from source:
+
 ```sh
 makepkg -si
 ```
@@ -134,13 +143,13 @@ to reload); the configured lighting is restored on daemon restart.
 
 ## Upgrading
 
-pacman never restarts user services. After an upgrade the daemon and the
-plasmoid keep running the old code until restarted:
-
 ```sh
-systemctl --user daemon-reload && systemctl --user restart coolingctl.service
-systemctl --user restart plasma-plasmashell.service   # plasmoid QML only
+gh release download --repo ekaradon/cooling-ctl --pattern '*.pkg.tar.zst' --output /tmp/cooling-ctl-latest.pkg.tar.zst --clobber && sudo pacman -U /tmp/cooling-ctl-latest.pkg.tar.zst && systemctl --user restart coolingctl.service && systemctl --user restart plasma-plasmashell.service
 ```
+
+pacman never restarts user services, and Plasma caches a plasmoid's QML
+for the whole session — hence the two restarts: without them the daemon
+and the panel widget keep running the old code after the upgrade.
 
 ## Development
 
