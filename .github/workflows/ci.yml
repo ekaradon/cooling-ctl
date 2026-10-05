@@ -1,19 +1,19 @@
-# CI for cooling-ctl — automates what the local ritual covers, minus what
-# needs the physical machine (live-daemon integration, plasmawindowed smoke,
-# screenshots): on every push the full test suite (unit, structural,
-# QML logic, qmllint with UnqualifiedAccess armed, mypy typing) runs in an
-# Arch container with the exact system packages the daemon targets; on
-# version tags the PKGBUILD is built as published (git source, no local
-# shortcut) and the package is uploaded as an artifact — validating the AUR
-# flow end-to-end.
+# CI — the test suite on working branches and main. The package build
+# lives in release.yml (tags only): a job with a false `if` condition still
+# shows up as "skipped" in the PR checks UI, so keeping it here would add
+# noise to every PR. What needs the physical machine (live-daemon
+# integration, plasmawindowed smoke, screenshots) is not covered by CI.
+#
+# Triggers scoped to avoid duplicate runs: pull_request for working
+# branches, push for main (post-merge verification). Tags are handled by
+# release.yml alone.
 
 name: ci
 
 on:
   push:
-    branches: [main]     # post-merge verification
-    tags: ["v*"]        # the package job
-  pull_request:         # working branches: one run per PR sync
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -34,28 +34,3 @@ jobs:
         env:
           SKIP_INTEGRATION: "1"   # needs the physical pad
         run: ./tests/run.sh
-
-  package:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: tests
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:base
-    steps:
-      - name: install dependencies
-        run: |
-          pacman -Syu --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm git base-devel
-      - uses: actions/checkout@v4
-      - name: makepkg (PKGBUILD as published — git source, no shortcut)
-        run: |
-          useradd -m builder
-          cp -r "$GITHUB_WORKSPACE" /tmp/build
-          chown -R builder:builder /tmp/build
-          cd /tmp/build
-          runuser -u builder -- makepkg -f
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arch-package
-          path: /tmp/build/*.pkg.tar.zst
-          if-no-files-found: error
