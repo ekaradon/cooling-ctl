@@ -54,8 +54,17 @@ function gpuLoadText(gpu) {
 
 // Snaps an RPM onto the slider's step grid (300 steps, 500..3200).
 // 500 = pad floor (0 %), 3200 = hardware maximum (100 %)
-function snapPlateau(rpm) {
+function snapFloor(rpm) {
     const from = 500, to = 3200, step = 300
     const snapped = from + Math.round((rpm - from) / step) * step
     return Math.max(from, Math.min(to, snapped))
+}
+
+// QML color object -> "#rrggbb" (drives the static LED color button)
+function colorHex(c) {
+    const to2 = function (v) {
+        let n = Math.round(Math.max(0, Math.min(1, v)) * 255)
+        return n.toString(16).padStart(2, "0")
+    }
+    return "#" + to2(c.r) + to2(c.g) + to2(c.b)
 }

@@ -18,6 +18,7 @@ CPU_STATE="${COOLINGCTL_CPU_STATE:-${XDG_RUNTIME_DIR:-/run/user/1000}/coolingctl
 DRM_DIR="${COOLINGCTL_DRM_DIR:-/sys/class/drm}"
 CONFIG_DIR="${COOLINGCTL_CURVES_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/coolingctl}"
 GAMING_JSON="${COOLINGCTL_GAMING_JSON:-$CONFIG_DIR/game-floor.json}"
+LED_JSON="${COOLINGCTL_LED_JSON:-$CONFIG_DIR/led.json}"
 
 hwmon_by_name() {
     dirname "$(grep -lx "$1" /sys/class/hwmon/hwmon*/name 2>/dev/null | head -1)"
@@ -97,23 +98,60 @@ cmd_status() {
     MODE=$(stget mode)
     [ "$MODE" = "game" ] || [ "$MODE" = "free" ] || MODE=silent
     PAD_RPM=$(stget rpm_reported)
-    PLATEAU=$(stget floor_pct)
+    FLOOR=$(stget floor_pct)
+    LED=$(stget led)
+    LEDBRIGHT=$(stget led_brightness)
+    LEDCOLOR=$(stget led_color)
     [ -z "$PAD_RPM" ] && PAD_RPM=-1
-    [ -z "$PLATEAU" ] && PLATEAU=-1
+    [ -z "$FLOOR" ] && FLOOR=-1
+    [ -z "$LED" ] && LED=keep
+    [ -z "$LEDBRIGHT" ] && LEDBRIGHT=100
+    [ -z "$LEDCOLOR" ] && LEDCOLOR="#ff6600"
 
     CPU=$(cpu_pct)
 
-    echo "${TCTL:--1}|${F1:--1}|${F2:--1}|${PAD_RPM}|${MODE}|${PLATEAU}|${GPU}|${CPU}|${GPUPCT}"
+    echo "${TCTL:--1}|${F1:--1}|${F2:--1}|${PAD_RPM}|${MODE}|${FLOOR}|${GPU}|${CPU}|${GPUPCT}|${LED}|${LEDBRIGHT}|${LEDCOLOR}"
 }
 
 cmd_set_floor() {
     PCT="$1"
     case "$PCT" in
-        ''|*[!0-9]*) echo "pct invalide"; exit 1 ;;
+        ''|*[!0-9]*) echo "invalid pct"; exit 1 ;;
     esac
     [ "$PCT" -lt 0 ] && PCT=0
     [ "$PCT" -gt 100 ] && PCT=100
     sed -i "s/\"percent\": *[0-9]*/\"percent\": $PCT/g" "$GAMING_JSON" || exit 1
+    env -u LD_LIBRARY_PATH systemctl --user kill --signal=SIGHUP coolingctl.service
+    echo "ok"
+}
+
+cmd_led() {
+    MODE="$1"; VAL="$2"
+    [ -f "$LED_JSON" ] || { echo "led config missing"; exit 1; }
+    case "$MODE" in
+        keep|off|spectrum|heat)
+            sed -i "s/\"effect\": *\"[a-z]*\"/\"effect\": \"$MODE\"/" "$LED_JSON" || exit 1 ;;
+        static)
+            # the color is optional: switching to static keeps the last one;
+            # accepted with or without the leading '#': a raw '#' would be
+            # swallowed as a shell comment by the exec transport
+            if [ -n "$VAL" ]; then
+                echo "$VAL" | grep -qE '^#?[0-9a-fA-F]{6}$' || { echo "invalid color"; exit 1; }
+                VAL="#$(echo "$VAL" | sed 's/^#//')"
+                sed -i "s/\"color\": *\"#[0-9a-fA-F]*\"/\"color\": \"$VAL\"/" "$LED_JSON"
+            fi
+            sed -i "s/\"effect\": *\"[a-z]*\"/\"effect\": \"static\"/" "$LED_JSON" || exit 1 ;;
+        wave)
+            case "$VAL" in left|right|"") DIR="${VAL:-right}" ;; *) echo "invalid direction"; exit 1 ;; esac
+            sed -i "s/\"effect\": *\"[a-z]*\"/\"effect\": \"wave\"/;
+                    s/\"wave_dir\": *\"[a-z]*\"/\"wave_dir\": \"$DIR\"/" "$LED_JSON" || exit 1 ;;
+        bright)
+            case "$VAL" in ''|*[!0-9]*) echo "invalid pct"; exit 1 ;; esac
+            [ "$VAL" -lt 0 ] && VAL=0
+            [ "$VAL" -gt 100 ] && VAL=100
+            sed -i "s/\"brightness\": *[0-9]*/\"brightness\": $VAL/" "$LED_JSON" || exit 1 ;;
+        *) echo "invalid led mode"; exit 1 ;;
+    esac
     env -u LD_LIBRARY_PATH systemctl --user kill --signal=SIGHUP coolingctl.service
     echo "ok"
 }
@@ -132,5 +170,6 @@ case "$1" in
     status)       cmd_status ;;
     set-floor)  cmd_set_floor "$2" ;;
     mode)         cmd_mode "$2" ;;
-    *)            echo "usage: $0 status|set-floor <pct>|mode <game|silent|free>"; exit 1 ;;
+    led)          cmd_led "$2" "$3" ;;
+    *)            echo "usage: $0 status|set-floor <pct>|mode <game|silent|free>|led <keep|off|spectrum|heat>|led static <#rrggbb>|led wave <left|right>|led bright <0-100>"; exit 1 ;;
 esac

@@ -3,6 +3,37 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] — 2026-10-05
+
+- LED strip control, in a dedicated **Lighting tab** of the full view
+  (media-player plasmoid pattern; the tab bar never moves, the popup keeps
+  its geometry). Effects: Default (untouched), Off, Static, Spectrum, Wave,
+  and **Heat** — color and brightness follow the CPU temperature (green and
+  dim when cool, red and fully bright in the danger zone around 93 °C).
+- Static color picks through KDE's native `ColorButton` (standard color
+  dialog); brightness slider for every effect except Heat; a framed
+  description explains each effect as you select it.
+- Protocol replicates padctl/openrazer byte-for-byte (transaction 0x1F,
+  class 0x0F, XOR crc); the configured lighting is restored on daemon
+  restart. Config: `led.json` (auto-created, default "keep").
+- **Optimistic updates**: every commit (mode, effect, brightness, color,
+  floor) applies instantly in the UI with a 4 s poll lock; a spinner in the
+  tab bar marks pending application; a failed commit falls back to the
+  daemon's truth on release.
+- Helper: `led` verbs (color accepted with or without the leading '#'); the
+  status line grows to 12 fields (LED effect, brightness, color); the daemon
+  status file publishes `led`, `led_brightness`, `led_color`.
+- Fix: the brightness/color controls initialize from the daemon's
+  configured state instead of arbitrary defaults.
+- Fix: garbage pad RPM spikes (5000+). The pad's feature report buffer
+  echoes the last written frame, so LED packets polluted the RPM bytes
+  (a 40% brightness byte read as 5100 RPM); reads beyond the pad's
+  ceiling are now rejected and the fan frame is re-sent after every LED
+  write. Guarded by S38.
+- UI: the pad readout is labeled "Pad fan"; screenshot tooling pre-seeds
+  the chart history (capture variants only) so captures no longer wait
+  for the 4-minute rolling window.
+
 ## [0.5.1] — 2026-10-04
 
 - Config self-provisioning: the daemon creates `~/config/coolingctl/`

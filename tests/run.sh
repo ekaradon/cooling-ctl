@@ -61,8 +61,13 @@ fi
 
 if [ -n "$QMLTR" ]; then
     echo "== compact view (QML logic via qmltestrunner) =="
-    env -u LD_LIBRARY_PATH QT_QPA_PLATFORM=offscreen "$QMLTR" -input "$DIR/tst_compact.qml" 2>&1 \
-        | grep -E "PASS|FAIL|Totals" || exit 1
+    QML_OUT=$(env -u LD_LIBRARY_PATH QT_QPA_PLATFORM=offscreen "$QMLTR" -input "$DIR/tst_compact.qml" 2>&1)
+    echo "$QML_OUT" | grep -E "PASS|FAIL|Totals"
+    # the display grep always matches: gate on actual failures
+    if echo "$QML_OUT" | grep -qE "^FAIL"; then
+        echo "ECHEC : tests QML en echec" >&2
+        exit 1
+    fi
 else
     echo "== SKIP: qmltestrunner not found (QML tests skipped) =="
 fi

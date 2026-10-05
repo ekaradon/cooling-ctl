@@ -1,13 +1,13 @@
 # Maintainer: ekaradon <ekaradon@users.noreply.github.com>
 pkgname=cooling-ctl
-pkgver=0.5.1
+pkgver=0.6.0
 pkgrel=1
 pkgdesc="Plasma 6 plasmoid + daemon: temperatures, internal fans and Razer Laptop Cooling Pad control (silent curve / game mode, signal-based, no restarts)"
 arch=(any)
 url="https://github.com/ekaradon/cooling-ctl"
 license=(GPL-2.0-or-later)
 replaces=(fw16-coolingctl)
-depends=(kirigami libplasma plasma-workspace plasma5support python python-hidapi)
+depends=(kirigami libplasma plasma-workspace plasma5support kdeclarative python python-hidapi)
 makedepends=(git)
 options=(!strip !debug)
 source=("git+https://github.com/ekaradon/cooling-ctl.git#tag=v$pkgver")

@@ -39,9 +39,9 @@ Rules that follow from this shape:
   failed/absent pad or sensor degrades to an em-dash or an empty string per
   value (the chart shows « collecte des données… » before the first poll),
   never to an error popup.
-- Helper `status` contract: 9 pipe-separated fields
-  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct`. The plasmoid
-  parses 9 with a fallback to 7. Changing the field count touches: helper,
+- Helper `status` contract: 12 pipe-separated fields
+  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color`.
+  The plasmoid parses with per-field fallbacks. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
 
 ## Coding conventions
@@ -110,6 +110,11 @@ widget reloads NOTHING. The cycle:
    (`org.coolingctl.shot`, `.cshot`, …), never the panel id.**
 3. Smoke: `timeout 8 plasmawindowed org.coolingctl` → log must be EMPTY.
    (plasmawindowed shows the compact view.)
+   **Stale-QML trap (cost an hour of phantom debugging, 2026-10-04):
+   plasmawindowed serves compiled QML from
+   `~/.cache/plasmawindowed/qmlcache/` — editing main.qml and relaunching is
+   NOT enough, the window can keep showing the old UI. Purge that directory
+   whenever an iteration's changes seem invisible.**
 4. `systemctl --user restart plasma-plasmashell.service`.
 5. After user validation: bump `pkgver`/`pkgrel` in `PKGBUILD` and
    `Version` in `metadata.json`, `make check` (includes packaging build),

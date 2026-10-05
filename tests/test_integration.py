@@ -19,7 +19,7 @@ STATUS_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"),
 GAMING_JSON = os.path.join(os.environ.get(
     "XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
     "coolingctl", "game-floor.json")
-KEYS = {"mode", "temp", "floor_pct", "floor_rpm",
+KEYS = {"mode", "temp", "floor_pct", "floor_rpm", "led", "led_brightness", "led_color",
         "rpm_cmd", "rpm_reported", "pad_present"}
 
 
@@ -98,6 +98,9 @@ class TestIntegration(unittest.TestCase):
         int(fields["rpm_cmd"])
         int(fields["rpm_reported"])
         self.assertIn(fields["pad_present"], {"0", "1"})
+        self.assertIn(fields["led"], {"keep", "off", "static", "spectrum", "wave", "heat"})
+        int(fields["led_brightness"])
+        self.assertRegex(fields["led_color"], r"^#[0-9a-fA-F]{6}$")
 
     def test_s10_bascule_mode_sans_restart(self):
         n0 = self._nrestarts()

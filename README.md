@@ -3,7 +3,9 @@
 A silent-first control stack for the **Razer Laptop Cooling Pad** on Linux: a
 user daemon owning the pad's HID interface exclusively (signal-based mode
 switching, no restarts ever) and a KDE Plasma 6 plasmoid with live
-temperatures, fan speeds, an RPM chart and a stepped fan-floor slider.
+temperatures, fan speeds, an RPM chart, a stepped fan-floor slider and
+full control of the pad's RGB LED strip — including a Heat mode where the
+strip itself becomes a thermal gauge.
 Built around a Framework Laptop 16 (AMD), not limited to it.
 
 | | Dark | Light |
@@ -99,10 +101,27 @@ systemctl --user kill --signal=SIGUSR1 coolingctl.service
 
 Live state is published atomically every 3 s in
 `$XDG_RUNTIME_DIR/coolingctl.status`
-(`mode,temp,floor_pct,floor_rpm,rpm_cmd,rpm_reported,pad_present`).
+(`mode,temp,floor_pct,floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
 The helper `coolingctl.sh status` prints
-`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct`; actions:
-`set-floor <pct>`, `mode <game|silent|free>`.
+`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color`;
+actions: `set-floor <pct>`, `mode <game|silent|free>`,
+`led <keep|off|static|spectrum|wave|heat>`, `led static <#rrggbb>`,
+`led wave <left|right>`, `led bright <0-100>`.
+
+### LED strip
+
+The plasmoid drives the pad's Chroma strip from a dedicated Lighting tab:
+
+- **Default** — no LED command is ever sent, the pad keeps its factory behavior
+- **Off**, **Static** (KDE's native color picker), **Spectrum**, **Wave**
+- **Heat** — the strip becomes a thermal gauge: color and brightness follow
+  the CPU temperature, green and dim when cool, red and fully bright in the
+  danger zone around 93 °C
+
+Brightness applies to every effect except Heat (driven by the temperature).
+Every change is applied optimistically in the UI and confirmed by the daemon.
+Configuration lives in `~/.config/coolingctl/led.json` (auto-created, `SIGHUP`
+to reload); the configured lighting is restored on daemon restart.
 
 ## Upgrading
 
@@ -132,5 +151,7 @@ GPL-2.0-or-later (see `LICENSE`).
 The animated cat — the `my-active-*-symbolic.svg` frames and the pacing
 formula — comes from the **CatWalk** plasmoid by Yuri Saurov
 (GPL-2.0-or-later), whose art traces back to the **RunCat** project by
-Takuto Nakamura (upstream RunCatNeo is Apache-2.0). The HID protocol follows
-the reverse-engineered `razer-coolingpad-linux` community work.
+Takuto Nakamura (upstream RunCatNeo is Apache-2.0). The fan HID protocol
+follows the reverse-engineered `razer-coolingpad-linux` community work; the
+LED protocol replicates **padctl** (hbmartin/razer-cooling-pad-mac), which
+mirrors openrazer's `razerchromacommon.c`.

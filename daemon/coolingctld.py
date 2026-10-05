@@ -17,7 +17,8 @@ Data:
 
 State published (atomically, every loop):
   $XDG_RUNTIME_DIR/coolingctl.status : lignes cle=valeur
-  mode, temp, floor_pct, floor_rpm, rpm_cmd, rpm_reported, pad_present
+  mode, temp, floor_pct, floor_rpm, rpm_cmd, rpm_reported, pad_present,
+  led, led_brightness, led_color
 
 Clean stop (SIGTERM): sends the "off" report to the pad (back to firmware
 behavior), like the historical controller.
@@ -55,6 +56,7 @@ CURVES_DIR = os.environ.get("COOLINGCTL_CURVES_DIR",
                             os.path.join(XDG_CONFIG, "coolingctl"))
 CURVE_FILE = os.path.join(CURVES_DIR, "silent-curve.json")
 GAMING_FILE = os.path.join(CURVES_DIR, "game-floor.json")
+LED_FILE = os.path.join(CURVES_DIR, "led.json")
 STATUS_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), "coolingctl.status")
 
@@ -80,6 +82,14 @@ DEFAULT_FLOOR = {
     "hysteresis": 2,
     "sensors": "auto",
 }
+# "keep" never sends LED packets: least surprise on first start.
+DEFAULT_LED = {
+    "effect": "keep",
+    "color": "#ff6600",
+    "brightness": 100,
+    "wave_dir": "right",
+    "wave_speed": 40,
+}
 
 
 def ensure_configs(curves_dir=None):
@@ -87,7 +97,8 @@ def ensure_configs(curves_dir=None):
     d = curves_dir or CURVES_DIR
     os.makedirs(d, exist_ok=True)
     for name, data in (("silent-curve.json", DEFAULT_SILENT_CURVE),
-                       ("game-floor.json", DEFAULT_FLOOR)):
+                       ("game-floor.json", DEFAULT_FLOOR),
+                       ("led.json", DEFAULT_LED)):
         path = os.path.join(d, name)
         if not os.path.exists(path):
             with open(path, "w") as f:
@@ -136,6 +147,138 @@ def build_off_report():
     return bytes(buf)
 
 
+# ------------------------------ LED protocol --------------------------------
+# Razer Chroma extended-matrix effects for the pad's 1x18 LED strip.
+# Byte layout replicated from padctl (hbmartin/razer-cooling-pad-mac), which
+# mirrors openrazer's razerchromacommon.c: transaction id 0x1F, class 0x0F,
+# VARSTORE storage on the zeroth (whole-strip) LED, XOR crc at buf[89].
+# CRC covers buf[3..88] (the transaction id is excluded).
+
+LED_TID = 0x1F
+LED_CLASS = 0x0F
+LED_CMD_EFFECT = 0x02
+LED_CMD_BRIGHTNESS = 0x04
+LED_VARSTORE = 0x01
+LED_ZERO_LED = 0x00
+LED_WAVE_SPEED = 0x28          # padctl's default wave speed
+
+
+def build_led_report(cmd, size, args):
+    buf = bytearray(REPORT_LEN)
+    buf[0] = REPORT_ID
+    buf[2] = LED_TID
+    buf[6] = size
+    buf[7] = LED_CLASS
+    buf[8] = cmd
+    for i, b in enumerate(args):
+        buf[9 + i] = b
+    crc = 0
+    for b in buf[3:89]:
+        crc ^= b
+    buf[89] = crc
+    return bytes(buf)
+
+
+def led_off_report():
+    return build_led_report(LED_CMD_EFFECT, 0x06, [LED_VARSTORE, LED_ZERO_LED, 0x00])
+
+
+def led_static_report(r, g, b):
+    return build_led_report(LED_CMD_EFFECT, 0x09,
+                            [LED_VARSTORE, LED_ZERO_LED, 0x01,
+                             0x00, 0x00, 0x01, r, g, b])
+
+
+def led_spectrum_report():
+    return build_led_report(LED_CMD_EFFECT, 0x06,
+                            [LED_VARSTORE, LED_ZERO_LED, 0x03])
+
+
+def led_wave_report(direction="right", speed=LED_WAVE_SPEED):
+    dir_byte = 0x01 if direction == "left" else 0x02
+    return build_led_report(LED_CMD_EFFECT, 0x06,
+                            [LED_VARSTORE, LED_ZERO_LED, 0x04, dir_byte, speed])
+
+
+def led_brightness_report(brightness):
+    return build_led_report(LED_CMD_BRIGHTNESS, 0x03,
+                            [LED_VARSTORE, LED_ZERO_LED, brightness])
+
+
+def heat_color(temp, t_min=45.0, t_max=95.0):
+    """Classic thermal ramp: green (cool) -> yellow -> orange -> red (hot).
+    Pure function, unit-tested; drives the 'heat' LED effect."""
+    import colorsys
+    t = max(t_min, min(t_max, temp))
+    f = (t - t_min) / (t_max - t_min)
+    hue = (1.0 - f) * 120.0            # 120 deg = green, 0 deg = red
+    r, g, b = colorsys.hsv_to_rgb(hue / 360.0, 1.0, 1.0)
+    return (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
+
+
+def heat_brightness(temp, t_min=45.0, t_max=93.0):
+    """Heat effect brightness ramp: 5 % when cool, 100 % in the danger
+    zone (93 deg = the chart's threshold band). Linear, pure, tested."""
+    t = max(t_min, min(t_max, temp))
+    f = (t - t_min) / (t_max - t_min)
+    return int(round(5 + 95 * f))
+
+
+def parse_led_color(s):
+    """'#rrggbb' -> (r, g, b); None when invalid."""
+    try:
+        s = str(s).lstrip("#")
+        if len(s) == 6:
+            return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except Exception:
+        pass
+    return None
+
+
+def apply_led(dev, cfg):
+    """Send the configured LED effect. One-shot effects only — the 'heat'
+    effect is applied continuously by the main loop. Returns True when at
+    least one packet was sent (the caller must re-prime the RPM frame)."""
+    if dev is None or not cfg:
+        return False
+    effect = cfg.get("effect", "keep")
+    if effect == "keep":
+        return False
+    sent = False
+    b = cfg.get("brightness")
+    if isinstance(b, (int, float)) and 0 <= b <= 100:
+        send(dev, led_brightness_report(int(b * 255 / 100)))
+        sent = True
+    if effect == "off":
+        send(dev, led_off_report())
+        sent = True
+    elif effect == "spectrum":
+        send(dev, led_spectrum_report())
+        sent = True
+    elif effect == "wave":
+        send(dev, led_wave_report(cfg.get("wave_dir", "right"),
+                                  int(cfg.get("wave_speed", LED_WAVE_SPEED))))
+        sent = True
+    elif effect == "static":
+        rgb = parse_led_color(cfg.get("color", "#ff6600"))
+        if rgb:
+            send(dev, led_static_report(*rgb))
+            sent = True
+    return sent
+
+
+def prime_rpm_frame(dev, st):
+    """The pad's feature report buffer ECHOES the last written frame: after
+    an LED packet, read_rpm decodes LED bytes as garbage RPM (lived bug:
+    a 40% brightness byte read as 5100 RPM). Re-send the last fan/off frame
+    so the next read returns real telemetry."""
+    if dev is None:
+        return
+    frame = getattr(st, "last_frame", None)
+    if frame is not None:
+        send(dev, frame)
+
+
 def open_device():
     try:
         dev = hid.device()
@@ -156,7 +299,12 @@ def send(dev, report):
 def read_rpm(dev):
     try:
         data = dev.get_feature_report(REPORT_ID, REPORT_LEN)
-        return (data[IDX_RPM_L] | (data[IDX_RPM_H] << 8)) * 50
+        rpm = (data[IDX_RPM_L] | (data[IDX_RPM_H] << 8)) * 50
+        # the feature report buffer ECHOES the last written frame: after an
+        # LED packet the bytes decode to garbage (a 40% brightness byte at
+        # IDX_RPM_L read as 5100 RPM — lived bug). The pad tops at MAX_RPM;
+        # anything beyond that is buffer pollution, not telemetry.
+        return rpm if rpm <= MAX_RPM * 1.25 else None
     except Exception:
         return None
 
@@ -195,6 +343,9 @@ class State:
         self.floor_pct = 30
         self.last_rpm = None
         self.read_fails = 0
+        self.led = {}                # led.json contents (effect, color, ...)
+        self.last_heat_rgb = None    # dedup for the heat effect
+        self.last_heat_bright = None
         self.reload()
 
     def reload(self):
@@ -202,6 +353,20 @@ class State:
         pct = self.load_floor(GAMING_FILE)
         if pct is not None:
             self.floor_pct = pct
+        self.led = self.load_led(LED_FILE)
+        self.last_heat_rgb = None    # force a re-apply
+        self.last_heat_bright = None
+
+    @staticmethod
+    def load_led(path):
+        try:
+            with open(path) as f:
+                cfg = json.load(f)
+                if isinstance(cfg, dict) and "effect" in cfg:
+                    return cfg
+        except Exception as e:
+            print(f"unreadable LED config ({e})", file=sys.stderr)
+        return {}
 
     @staticmethod
     def load_curve(path):
@@ -245,7 +410,8 @@ def pct_to_rpm(pct):
     return int(round(rpm / 50.0)) * 50
 
 
-def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present):
+def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present,
+                 led="keep", led_brightness=100, led_color="#ff6600"):
     tmp = STATUS_FILE + ".tmp"
     try:
         with open(tmp, "w") as f:
@@ -256,9 +422,12 @@ def write_status(mode, temp, floor_pct, rpm_cmd, rpm_rep, pad_present):
             f.write(f"rpm_cmd={rpm_cmd if rpm_cmd is not None else -1}\n")
             f.write(f"rpm_reported={rpm_rep if rpm_rep is not None else -1}\n")
             f.write(f"pad_present={1 if pad_present else 0}\n")
+            f.write(f"led={led}\n")
+            f.write(f"led_brightness={led_brightness}\n")
+            f.write(f"led_color={led_color}\n")
         os.replace(tmp, STATUS_FILE)
     except OSError as e:
-        print(f"ecriture status impossible: {e}", file=sys.stderr)
+        print(f"cannot write status file: {e}", file=sys.stderr)
 
 
 # --------------------------------- main -----------------------------------
@@ -300,6 +469,11 @@ def main():
     if dev is None:
         print("pad absent at startup, waiting...", flush=True)
 
+    # restore the configured lighting on boot/restart (padctl parity):
+    # the strip keeps its firmware state across daemon restarts
+    if apply_led(dev, st.led):
+        prime_rpm_frame(dev, st)
+
     last_rep = None
     print("coolingctld up (silent mode)", flush=True)
     while running[0]:
@@ -309,7 +483,9 @@ def main():
             pending["mode"] = None
             if new_mode != st.mode:
                 if new_mode == "free" and dev is not None:
-                    send(dev, build_off_report())
+                    off_frame = build_off_report()
+                    send(dev, off_frame)
+                    st.last_frame = off_frame
                     print("control released (off report)", flush=True)
                 st.mode = new_mode
                 st.last_rpm = None  # force a rewrite on mode change
@@ -319,6 +495,8 @@ def main():
             st.reload()
             st.last_rpm = None
             print(f"config reloaded (floor {st.floor_pct}%)", flush=True)
+            if apply_led(dev, st.led):
+                prime_rpm_frame(dev, st)
 
         # CPU sensor (re-resolve if it disappears)
         temp = read_temp(k10) if k10 else None
@@ -344,18 +522,34 @@ def main():
             dev = open_device()
             if dev is not None:
                 st.last_rpm = None
-                print("pad connecte", flush=True)
+                print("pad connected", flush=True)
 
         # apply
         pad_present = dev is not None
         if dev is not None and rpm is not None and rpm != st.last_rpm:
-            if not send(dev, build_set_rpm_report(rpm)):
+            frame = build_set_rpm_report(rpm)
+            if not send(dev, frame):
                 dev.close()
                 dev = None
                 pad_present = False
-                print("envoi HS, reconnexion...", flush=True)
+                print("write failed, reconnecting...", flush=True)
             else:
                 st.last_rpm = rpm
+                st.last_frame = frame   # for prime_rpm_frame after LED writes
+
+        # heat LED effect: color AND brightness follow the temperature,
+        # each deduped so we only send what changed
+        if st.led.get("effect") == "heat" and temp is not None and dev is not None:
+            rgb = heat_color(temp)
+            if rgb != st.last_heat_rgb:
+                send(dev, led_static_report(*rgb))
+                st.last_heat_rgb = rgb
+                prime_rpm_frame(dev, st)
+            bright = heat_brightness(temp)
+            if bright != st.last_heat_bright:
+                send(dev, led_brightness_report(int(bright * 255 / 100)))
+                st.last_heat_bright = bright
+                prime_rpm_frame(dev, st)
 
         # read back
         if dev is not None:
@@ -369,11 +563,13 @@ def main():
                         pass
                     dev = None
                     st.read_fails = 0
-                    print("lecture RPM HS x5, reouverture", flush=True)
+                    print("RPM read failed x5, reopening device", flush=True)
             else:
                 st.read_fails = 0
                 last_rep = rep
-        write_status(st.mode, temp, st.floor_pct, st.last_rpm, last_rep, pad_present)
+        write_status(st.mode, temp, st.floor_pct, st.last_rpm, last_rep, pad_present,
+                    st.led.get("effect", "keep"), int(st.led.get("brightness", 100)),
+                    st.led.get("color", "#ff6600"))
 
         time.sleep(INTERVAL)
 
@@ -383,7 +579,7 @@ def main():
             dev.close()
         except Exception:
             pass
-    print("coolingctld arrete (pad libere)", flush=True)
+    print("coolingctld stopped (pad released)", flush=True)
 
 
 if __name__ == "__main__":

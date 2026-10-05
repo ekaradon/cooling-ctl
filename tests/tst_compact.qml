@@ -63,23 +63,23 @@ TestCase {
         compare(CL.gpuLoadText(NaN), "")
     }
 
-    function test_s26_snapPlateau() {
-        compare(CL.snapPlateau(500), 500)     // pad floor (0 %)
-        compare(CL.snapPlateau(490), 500)     // below the bound: clamp
-        compare(CL.snapPlateau(1688), 1700)   // continuous value -> nearest step
-        compare(CL.snapPlateau(1623), 1700)
-        compare(CL.snapPlateau(1391), 1400)
-        compare(CL.snapPlateau(3200), 3200)   // hardware maximum (100 %)
-        compare(CL.snapPlateau(3300), 3200)   // beyond: clamp
+    function test_s26_snapFloor() {
+        compare(CL.snapFloor(500), 500)     // pad floor (0 %)
+        compare(CL.snapFloor(490), 500)     // below the bound: clamp
+        compare(CL.snapFloor(1688), 1700)   // continuous value -> nearest step
+        compare(CL.snapFloor(1623), 1700)
+        compare(CL.snapFloor(1391), 1400)
+        compare(CL.snapFloor(3200), 3200)   // hardware maximum (100 %)
+        compare(CL.snapFloor(3300), 3200)   // beyond: clamp
     }
 
     function test_s29_grille_paliers() {
         // fixed point of the native slider (from 500, to 3200, stepSize 300,
         // snapMode SnapAlways): every grid step is stable under
-        // snapPlateau, the max lands exactly on the grid, and the 10
+        // snapFloor, the max lands exactly on the grid, and the 10
         // ticks stay <= 20 (above that the Plasma wrapper stops drawing them)
         for (let k = 0; k <= 9; k++)
-            compare(CL.snapPlateau(500 + k * 300), 500 + k * 300, "palier " + k)
+            compare(CL.snapFloor(500 + k * 300), 500 + k * 300, "palier " + k)
         verify((3200 - 500) % 300 === 0, "the max must land exactly on the grid")
         compare((3200 - 500) / 300, 9)
         verify((3200 - 500) / 300 <= 20, "above 20 steps the Plasma wrapper hides the ticks")
@@ -89,7 +89,19 @@ TestCase {
         compare(CL.cpuText(42.3), "42 %")        // load rounded, discrete
         compare(CL.cpuText(0), "0 %")
         compare(CL.cpuText(100), "100 %")
-        compare(CL.cpuText(-1), "")              // invalide : rien affiché
+        compare(CL.cpuText(-1), "")              // invalid: nothing displayed
         compare(CL.cpuText(NaN), "")
+    }
+
+    function test_s33_colorHex() {
+        // QML color object -> "#rrggbb" (static LED color button)
+        compare(CL.colorHex({ r: 1, g: 0, b: 0 }), "#ff0000")
+        compare(CL.colorHex({ r: 0, g: 1, b: 0 }), "#00ff00")
+        compare(CL.colorHex({ r: 0.2, g: 0.4, b: 0.6 }), "#336699")
+        compare(CL.colorHex({ r: 0, g: 0, b: 0 }), "#000000")
+        // out-of-range components are clamped (0.5 -> 128 -> 0x80)
+        compare(CL.colorHex({ r: 2, g: -1, b: 0.5 }), "#ff0080")
+        // format: 6 lowercase hex digits, leading '#'
+        verify(/^#[0-9a-f]{6}$/.test(CL.colorHex({ r: 0.37, g: 0.62, b: 0.11 })))
     }
 }

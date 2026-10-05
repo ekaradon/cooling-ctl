@@ -9,6 +9,9 @@ Covered specs:
   S5  key=value state file, complete fields, atomic writes
   S32 config self-provisioning: sensible defaults written on first start
       when missing (pacman never touches $HOME, the daemon provisions)
+  S33 static color: QML color -> "#rrggbb" (native ColorButton)
+  S34 LED packets byte-for-byte per padctl/openrazer + heat color ramp
+      when missing (pacman never touches $HOME, the daemon provisions)
 """
 import importlib.util
 import json
@@ -165,7 +168,6 @@ class TestStatusFile(unittest.TestCase):
 
 class TestDefaults(unittest.TestCase):
     """S32: config self-provisioning on first start."""
-
     def test_s32_defaults_created(self):
         tmpdir = tempfile.mkdtemp()
         try:
@@ -189,6 +191,134 @@ class TestDefaults(unittest.TestCase):
                 self.assertEqual(json.load(f)["curve"][0]["percent"], 50)
         finally:
             shutil.rmtree(tmpdir)
+
+
+class TestLed(unittest.TestCase):
+    """S34: LED packets replicate padctl/openrazer byte-for-byte (extended
+    matrix, transaction id 0x1F, class 0x0F, XOR crc over buf[3..88])."""
+
+    def _check_frame(self, report, cmd, size, args):
+        self.assertEqual(len(report), 91)
+        self.assertEqual(report[0], 0x00)        # report id
+        self.assertEqual(report[2], 0x1F)        # RGB transaction id
+        self.assertEqual(report[6], size)        # data size
+        self.assertEqual(report[7], 0x0F)        # extended matrix class
+        self.assertEqual(report[8], cmd)          # command
+        for i, b in enumerate(args):
+            self.assertEqual(report[9 + i], b, f"arg {i}")
+        crc = 0
+        for b in report[3:89]:
+            crc ^= b
+        self.assertEqual(report[89], crc, "crc must cover buf[3..88]")
+
+    def test_s34_reports(self):
+        self._check_frame(d.led_off_report(), 0x02, 0x06, [0x01, 0x00, 0x00])
+        self._check_frame(d.led_spectrum_report(), 0x02, 0x06, [0x01, 0x00, 0x03])
+        self._check_frame(d.led_static_report(0x12, 0x34, 0x56), 0x02, 0x09,
+                          [0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x12, 0x34, 0x56])
+        self._check_frame(d.led_wave_report("left", 0x28), 0x02, 0x06,
+                          [0x01, 0x00, 0x04, 0x01, 0x28])
+        self._check_frame(d.led_wave_report("right"), 0x02, 0x06,
+                          [0x01, 0x00, 0x04, 0x02, 0x28])
+        self._check_frame(d.led_brightness_report(0x80), 0x04, 0x03,
+                          [0x01, 0x00, 0x80])
+
+    def test_s34_parse_led_color(self):
+        self.assertEqual(d.parse_led_color("#ff6600"), (0xFF, 0x66, 0x00))
+        self.assertEqual(d.parse_led_color("ff6600"), (0xFF, 0x66, 0x00))
+        self.assertIsNone(d.parse_led_color("#ff660"))
+        self.assertIsNone(d.parse_led_color("#zzzzzz"))
+        self.assertIsNone(d.parse_led_color(None))
+
+    def test_s34_heat_color(self):
+        # thermal ramp anchors: cool = green, mid = yellow, hot = red
+        self.assertEqual(d.heat_color(45), (0, 255, 0))
+        self.assertEqual(d.heat_color(70), (255, 255, 0))
+        self.assertEqual(d.heat_color(95), (255, 0, 0))
+        # clamps outside the range
+        self.assertEqual(d.heat_color(20), (0, 255, 0))
+        self.assertEqual(d.heat_color(120), (255, 0, 0))
+        # red rises monotonically, green falls monotonically
+        prev_r, prev_g = -1, 256
+        for t in range(45, 96, 5):
+            r, g, b = d.heat_color(t)
+            self.assertGreaterEqual(r, prev_r)
+            self.assertLessEqual(g, prev_g)
+            prev_r, prev_g = r, g
+
+    def test_s34_heat_brightness(self):
+        # 5 % when cool, 100 % in the danger zone (93 deg), linear, clamped
+        self.assertEqual(d.heat_brightness(45), 5)
+        self.assertEqual(d.heat_brightness(93), 100)
+        self.assertEqual(d.heat_brightness(20), 5)
+        self.assertEqual(d.heat_brightness(120), 100)
+        # midpoint of the ramp (52.5 rounds to 52)
+        self.assertEqual(d.heat_brightness(69), 52)
+        # monotonic rise
+        prev = 0
+        for t in range(45, 94, 4):
+            b = d.heat_brightness(t)
+            self.assertGreaterEqual(b, prev)
+            prev = b
+
+
+class FakeDev:
+    """Minimal hid.device stand-in: canned reads, writes recorded."""
+
+    def __init__(self, report=None):
+        self.report = report or bytearray(d.REPORT_LEN)
+        self.written = []
+
+    def get_feature_report(self, rid, length):
+        return self.report[:length]
+
+    def send_feature_report(self, report):
+        self.written.append(bytes(report))
+        return len(report)
+
+
+class TestRpmRead(unittest.TestCase):
+    """S38: read_rpm must reject buffer pollution (LED echo bug).
+
+    The pad's feature report buffer echoes the last written frame; after
+    an LED packet the brightness byte lands at IDX_RPM_L and decodes as
+    garbage RPM (40% = byte 102 -> 5100 RPM, a lived bug)."""
+
+    def _report(self, rpm):
+        raw = rpm // 50
+        buf = bytearray(d.REPORT_LEN)
+        buf[0] = d.REPORT_ID
+        buf[d.IDX_RPM_L] = raw & 0xFF
+        buf[d.IDX_RPM_H] = (raw >> 8) & 0xFF
+        return buf
+
+    def test_s38_valid_telemetry(self):
+        for rpm in [500, 800, 1500, 3200]:
+            self.assertEqual(d.read_rpm(FakeDev(self._report(rpm))), rpm)
+
+    def test_s38_rejects_led_echo(self):
+        # 40% brightness = byte 102 at IDX_RPM_L -> 5100 RPM: pollution
+        buf = bytearray(d.REPORT_LEN)
+        buf[d.IDX_RPM_L] = 102
+        self.assertIsNone(d.read_rpm(FakeDev(buf)))
+
+    def test_s38_threshold(self):
+        # MAX_RPM * 1.25 = 4000 is the last accepted value; beyond is junk
+        self.assertEqual(d.read_rpm(FakeDev(self._report(4000))), 4000)
+        self.assertIsNone(d.read_rpm(FakeDev(self._report(4050))))
+
+    def test_s38_prime_rpm_frame(self):
+        # after an LED write the caller must re-send the last fan frame
+        frame = d.build_set_rpm_report(1500)
+        dev = FakeDev()
+        st = type("St", (), {})()
+        st.last_frame = frame
+        d.prime_rpm_frame(dev, st)
+        self.assertEqual(dev.written[-1], bytes(frame))
+        # no frame known: no write, no crash
+        d.prime_rpm_frame(dev, type("St", (), {})())
+        self.assertEqual(len(dev.written), 1)
+        d.prime_rpm_frame(None, st)  # dev absent: silent no-op
 
 
 if __name__ == "__main__":

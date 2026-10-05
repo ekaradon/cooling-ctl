@@ -20,6 +20,9 @@ package). These static checks catch them before installation.
       does not expose those signals (pressed is a property): a handler
       on a non-existent one takes the WHOLE plasmoid down to a settings icon,
       and qmllint does not see it (handler muted by UnqualifiedAccess=disable)
+  S36 the full view exposes the LED selector: ComboBox over the effects,
+      brightness slider, static picker (swatches + hue/saturation), all
+      wired through the helper
   S31 the compact cat must be rendered as a Kirigami.Icon isMask tinted
       Kirigami.Theme.textColor — KSvg does not recolor symbolic SVGs outside
       an applet context (lived bug: dark-on-dark cat, invisible in dark theme)
@@ -117,13 +120,66 @@ class TestStructureQml(unittest.TestCase):
         self.assertNotIn("KSvg.SvgItem", self.qml,
                          "KSvg does not recolor symbolic SVGs here")
 
+    def test_s39_pad_fan_label(self):
+        """The pad readout is labeled "Pad fan" — the RPM number alone
+        was ambiguous next to the laptop fans readout (user request)."""
+        self.assertIn('text: i18n("Pad fan")', self.qml,
+                      "the pad RPM readout must say Pad fan")
+        self.assertNotIn('text: i18n("Pad")', self.qml,
+                         "the bare Pad label must not resurface")
+
+    def test_s36_led_ui(self):
+        """The full view must not become a wall of controls: LED settings
+        live in a second tab (media-player plasmoid pattern). The Lighting
+        page carries the effect ComboBox, the brightness slider and the
+        static color picker, all wired through the helper."""
+        self.assertIn("PlasmaComponents.TabBar {", self.qml,
+                      "the full view must be tabbed (cooling / lighting)")
+        self.assertIn('text: i18n("Cooling")', self.qml)
+        self.assertIn('text: i18n("Lighting")', self.qml)
+        self.assertIn("mainTabs.currentIndex === 0", self.qml,
+                      "the cooling page must bind to the first tab")
+        self.assertIn("mainTabs.currentIndex === 1", self.qml,
+                      "the lighting page must bind to the second tab")
+        self.assertIn('values: ["keep", "off", "static", "spectrum", "wave", "heat"]',
+                      self.qml, "the ComboBox must cover all supported effects")
+        self.assertIn('" led bright "', self.qml,
+                      "the brightness slider must commit via the helper")
+        self.assertIn('" led static "', self.qml,
+                      "the color button must commit via the helper")
+        self.assertIn('root.led === "static"', self.qml,
+                      "the static color picker must only show for static")
+        self.assertIn('root.led !== "keep" && root.led !== "heat"', self.qml,
+                      "the brightness slider must hide for stock AND heat")
+
+    def test_s37_optimistic_updates(self):
+        """Lived annoyance: after a mode/effect change, the UI waited for
+        the daemon round-trip (~2-5 s) before showing anything. Every
+        commit must be OPTIMISTIC: apply locally, lock the poll out 4 s,
+        resync on release; a BusyIndicator in the tab bar marks pending
+        application."""
+        self.assertIn("function commitMode(", self.qml,
+                      "mode switches must commit optimistically")
+        self.assertIn("root.modeBusy = true", self.qml,
+                      "a mode commit must hold the poll lock")
+        self.assertIn("if (!root.modeBusy)", self.qml,
+                      "the poll must respect the mode lock")
+        self.assertIn("if (!root.ledBusy)", self.qml,
+                      "the poll must respect the lighting lock")
+        self.assertIn("root.led = values[index]", self.qml,
+                      "the effect ComboBox must apply optimistically")
+        self.assertIn("PlasmaComponents.BusyIndicator", self.qml,
+                      "pending application must be visible (spinner)")
+        self.assertIn("visible: root.modeBusy || root.ledBusy || root.sliderBusy",
+                      self.qml, "the spinner covers every pending commit")
+
     def test_s27_slider_resilient(self):
-        """The floor label shows the step (snapPlateau) and the slider
+        """The floor label shows the step (snapFloor) and the slider
         periodically resynchronizes (anti-desync after a failed drag)."""
-        self.assertIn("CLogic.snapPlateau(500 + root.floor * 27)", self.qml,
+        self.assertIn("CLogic.snapFloor(500 + root.floor * 27)", self.qml,
                       "the resting label must show the step, not the raw computation")
         self.assertGreaterEqual(self.qml.count("floorSlider.value = 500 + root.floor * 27"), 2,
-                                "a resync mechanism is needed beyond onPlateauChanged")
+                                "a resync mechanism is needed beyond onFloorChanged")
 
 
 class TestStructureSources(unittest.TestCase):

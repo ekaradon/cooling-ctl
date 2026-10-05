@@ -6,6 +6,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as P5Support
+import org.kde.kquickcontrols as KQuickControls
 import "compact-logic.js" as CLogic
 
 PlasmoidItem {
@@ -20,6 +21,11 @@ PlasmoidItem {
     property real floor: -1
     property real cpu: 0
     property real gpuLoad: -1
+    property string led: "keep"
+    property string ledColor: "#ff6600"   // last static color picked in the UI
+    property int ledBright: -1             // configured LED brightness (from the status)
+    property bool ledBusy: false          // 4 s lock after a lighting commit (optimistic update)
+    property bool modeBusy: false         // 4 s lock after a mode commit (optimistic update)
     property int polls: 0
     property bool sliderBusy: false   // true during the drag + 4 s after (anti snap-back lock)
 
@@ -67,11 +73,21 @@ PlasmoidItem {
         const f1 = parseFloat(p[1]), f2 = parseFloat(p[2])
         root.fan = (f1 + f2) / 2
         root.padRpm = parseFloat(p[3])
-        root.mode = p[4]
+        // optimistic updates: while a commit's lock is held the poll keeps
+        // the locally applied value; once released, the daemon's confirmed
+        // state resyncs (and catches failed commits)
+        if (!root.modeBusy)
+            root.mode = p[4]
         root.floor = parseFloat(p[5])
         root.gpu = parseFloat(p[6])
         root.cpu = p.length > 7 ? parseFloat(p[7]) : 0
         root.gpuLoad = p.length > 8 ? parseFloat(p[8]) : -1
+        if (!root.ledBusy) {
+            root.led = p.length > 9 ? p[9] : "keep"
+            root.ledBright = p.length > 10 ? parseInt(p[10]) : -1
+            if (p.length > 11 && /^#[0-9a-fA-F]{6}$/.test(p[11]))
+                root.ledColor = p[11]
+        }
 
         root.history = root.history.concat([{ tctl: root.tctl, gpu: root.gpu, fan: root.fan, pad: root.padRpm }])
         if (root.history.length > root.maxPoints)
@@ -94,6 +110,21 @@ PlasmoidItem {
 
     function exec(cmd) { runner.connectSource(cmd) }
 
+    // optimistic commit: apply locally, lock the poll out for 4 s, let the
+    // daemon's confirmed state resync once the lock releases
+    function commitMode(m) {
+        root.mode = m
+        root.modeBusy = true
+        root.exec(root.helper + " mode " + m)
+        modeLock.restart()
+    }
+
+    Timer {
+        id: modeLock
+        interval: 4000
+        onTriggered: root.modeBusy = true
+    }
+
     preferredRepresentation: compactRepresentation
 
     fullRepresentation: Item {
@@ -107,47 +138,80 @@ PlasmoidItem {
             anchors.margins: Kirigami.Units.gridUnit * 1.5
             spacing: Kirigami.Units.largeSpacing
 
-            // -- header: title + mode badge --------------------------------
+            // tabs first (media-player plasmoid pattern — the popup opens
+            // on its tabs, nothing above them); the spinner marks an
+            // optimistic commit being applied by the daemon
             RowLayout {
                 Layout.fillWidth: true
-                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                Layout.topMargin: -Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
 
-                PlasmaComponents.Label {
-                    text: i18n("COOLING")
-                    font.pointSize: Application.font.pointSize * 0.9
-                    font.letterSpacing: 2
-                    font.weight: Font.DemiBold
-                    color: Kirigami.Theme.disabledTextColor
+                PlasmaComponents.TabBar {
+                    id: mainTabs
                     Layout.fillWidth: true
+                    PlasmaComponents.TabButton { text: i18n("Cooling") }
+                    PlasmaComponents.TabButton { text: i18n("Lighting") }
                 }
 
-                Rectangle {
-                    visible: root.padVisible
-                    radius: height / 2
-                    implicitHeight: modeLabel.implicitHeight + 2 * Kirigami.Units.smallSpacing
-                    implicitWidth: modeLabel.implicitWidth + 3 * Kirigami.Units.smallSpacing
-                    readonly property bool isGame: root.mode === "game"
-                    color: isGame
-                           ? Qt.rgba(Kirigami.Theme.highlightColor.r,
-                                     Kirigami.Theme.highlightColor.g,
-                                     Kirigami.Theme.highlightColor.b, 0.25)
-                           : Kirigami.Theme.alternateBackgroundColor
-
-                    PlasmaComponents.Label {
-                        id: modeLabel
-                        anchors.centerIn: parent
-                        text: root.mode === "game" ? i18n("GAME MODE")
-                         : root.mode === "free" ? i18n("FREE")
-                         : i18n("SILENT CURVE")
-                        color: parent.isGame ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-                        font.pointSize: Application.font.pointSize * 0.75
-                        font.letterSpacing: 1
-                        font.weight: Font.DemiBold
-                    }
+                PlasmaComponents.BusyIndicator {
+                    visible: root.modeBusy || root.ledBusy || root.sliderBusy
+                    running: visible
+                    implicitWidth: Kirigami.Units.iconSizes.small
+                    implicitHeight: Kirigami.Units.iconSizes.small
+                    Layout.alignment: Qt.AlignVCenter
+                    Accessible.name: i18n("Applying changes")
                 }
             }
 
-            // -- stats: CPU + GPU heroes, RPM secondary ----------------
+            // fixed-height page slot: the popup keeps its geometry across
+            // tabs — the tab bar never moves, content is top-anchored
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+            // Cooling page: mode badge, stats, chart, fan controls
+            ColumnLayout {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                visible: mainTabs.currentIndex === 0
+                Layout.topMargin: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.largeSpacing
+
+                // mode badge: this is cooling state, it lives here
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: -Kirigami.Units.smallSpacing
+
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                        visible: root.padVisible
+                        radius: height / 2
+                        implicitHeight: modeLabel.implicitHeight + 2 * Kirigami.Units.smallSpacing
+                        implicitWidth: modeLabel.implicitWidth + 3 * Kirigami.Units.smallSpacing
+                        readonly property bool isGame: root.mode === "game"
+                        color: isGame
+                               ? Qt.rgba(Kirigami.Theme.highlightColor.r,
+                                         Kirigami.Theme.highlightColor.g,
+                                         Kirigami.Theme.highlightColor.b, 0.25)
+                               : Kirigami.Theme.alternateBackgroundColor
+
+                        PlasmaComponents.Label {
+                            id: modeLabel
+                            anchors.centerIn: parent
+                            text: root.mode === "game" ? i18n("GAME MODE")
+                             : root.mode === "free" ? i18n("FREE")
+                             : i18n("SILENT CURVE")
+                            color: parent.isGame ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                            font.pointSize: Application.font.pointSize * 0.75
+                            font.letterSpacing: 1
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                }
+
+                // -- stats: CPU + GPU heroes, RPM secondary ----------------
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing * 3
@@ -214,7 +278,7 @@ PlasmoidItem {
                         font.weight: Font.Bold
                         color: root.colFan
                     }
-                    PlasmaComponents.Label { text: i18n("Pad"); visible: root.padVisible; font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
+                    PlasmaComponents.Label { text: i18n("Pad fan"); visible: root.padVisible; font.pixelSize: Math.round(Application.font.pixelSize * 0.85); color: Kirigami.Theme.disabledTextColor }
                     PlasmaComponents.Label {
                         visible: root.padVisible
                         Layout.alignment: Qt.AlignRight
@@ -364,7 +428,7 @@ PlasmoidItem {
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.Switch {
                     checked: root.mode !== "free"
-                    onToggled: root.exec(root.helper + " mode " + (checked ? "silent" : "free"))
+                    onToggled: root.commitMode(checked ? "silent" : "free")
                 }
             }
             RowLayout {
@@ -378,7 +442,7 @@ PlasmoidItem {
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.Switch {
                     checked: root.mode === "game"
-                    onToggled: root.exec(root.helper + " mode " + (checked ? "game" : "silent"))
+                    onToggled: root.commitMode(checked ? "game" : "silent")
                 }
             }
             RowLayout {
@@ -393,9 +457,9 @@ PlasmoidItem {
                 PlasmaComponents.Label {
                     text: {
                         if (root.sliderBusy || floorSlider.pressed)
-                            return CLogic.snapPlateau(floorSlider.value) + " RPM …"
+                            return CLogic.snapFloor(floorSlider.value) + " RPM …"
                         return root.floor >= 0
-                                ? CLogic.snapPlateau(500 + root.floor * 27) + " RPM · " + Math.round(root.floor) + " %"
+                                ? CLogic.snapFloor(500 + root.floor * 27) + " RPM · " + Math.round(root.floor) + " %"
                                 : "—"
                     }
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
@@ -426,18 +490,18 @@ PlasmoidItem {
                     if (pressed) {
                         root.sliderBusy = true
                     } else {
-                        commitPlateau()
+                        commitFloor()
                         sliderLock.restart()
                     }
                 }
                 // wheel and keyboard: moved() outside a drag = immediate commit
                 onMoved: {
                     if (!pressed)
-                        commitPlateau()
+                        commitFloor()
                 }
 
-                function commitPlateau() {
-                    const cible = CLogic.snapPlateau(floorSlider.value)
+                function commitFloor() {
+                    const cible = CLogic.snapFloor(floorSlider.value)
                     root.exec(root.helper + " set-floor " + Math.round((cible - 500) / 27))
                 }
 
@@ -449,7 +513,7 @@ PlasmoidItem {
 
                 Connections {
                     target: root
-                    function onPlateauChanged() {
+                    function onFloorChanged() {
                         if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
                             floorSlider.value = 500 + root.floor * 27
                     }
@@ -466,6 +530,157 @@ PlasmoidItem {
                             floorSlider.value = 500 + root.floor * 27
                     }
                 }
+            }
+
+            }
+
+            // Lighting page: LED effect, brightness, color picker
+            ColumnLayout {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                visible: mainTabs.currentIndex === 1
+                Layout.topMargin: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.largeSpacing
+
+                // LED strip: effect, brightness, static color picker (inline,
+                // no OS dialog — ColorDialog does not behave in a plasmoid popup)
+            RowLayout {
+                visible: root.padVisible
+                Layout.fillWidth: true
+                PlasmaComponents.Label {
+                    text: i18n("LED")
+                    font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                    color: Kirigami.Theme.disabledTextColor
+                }
+                Item { Layout.fillWidth: true }
+                PlasmaComponents.ComboBox {
+                    id: ledSelect
+                    readonly property var values: ["keep", "off", "static", "spectrum", "wave", "heat"]
+                    model: [i18n("Default"), i18n("Off"), i18n("Static"), i18n("Spectrum"), i18n("Wave"), i18n("Heat")]
+                    currentIndex: Math.max(0, values.indexOf(root.led))
+                    onActivated: function(index) {
+                        root.led = values[index]     // optimistic
+                        root.ledBusy = true
+                        root.exec(root.helper + " led " + values[index])
+                        ledLock.restart()
+                    }
+                }
+            }
+
+            // mode description: a light framed note explaining the current
+            // effect, so "Heat" or "Wave" are not guessing games
+            Rectangle {
+                visible: root.padVisible
+                Layout.fillWidth: true
+                radius: Kirigami.Units.smallSpacing
+                color: "transparent"
+                border.color: Kirigami.Theme.disabledTextColor
+                border.width: 1
+                opacity: 0.75
+                implicitHeight: ledModeDesc.height + 2 * Kirigami.Units.largeSpacing
+
+                PlasmaComponents.Label {
+                    id: ledModeDesc
+                    // explicit geometry (no anchors): with an explicit width
+                    // and wrapMode the label derives its own wrapped height;
+                    // uniform largeSpacing padding inside the frame
+                    x: Kirigami.Units.largeSpacing
+                    y: Kirigami.Units.largeSpacing
+                    width: parent.width - 2 * Kirigami.Units.largeSpacing
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                    // real explanatory text uses the real text color —
+                    // disabledTextColor is for disabled controls, not prose
+                    color: Kirigami.Theme.textColor
+                    text: {
+                        switch (root.led) {
+                        case "off":      return i18n("Turn the LED strip off entirely.")
+                        case "static":  return i18n("A single fixed color at the chosen brightness. Pick the color with the button below.")
+                        case "spectrum": return i18n("The strip cycles continuously through the whole color wheel.")
+                        case "wave":    return i18n("A wave of light travels along the strip, from left to right.")
+                        case "heat":    return i18n("The strip becomes a thermal gauge: color and brightness follow the CPU temperature — green and dim when cool, red and fully bright in the danger zone around 93 °C.")
+                        default:        return i18n("Leave the pad's lighting untouched: no LED command is ever sent, the pad keeps its factory behavior.")
+                        }
+                    }
+                }
+            }
+                // brightness: label row above, full-width slider below —
+                // the cooling tab convention; hidden in heat mode (the
+                // daemon drives the brightness with the temperature there)
+                ColumnLayout {
+                    visible: root.padVisible && root.led !== "keep" && root.led !== "heat"
+                    Layout.fillWidth: true
+                    spacing: 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label {
+                            text: i18n("Brightness")
+                            font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Item { Layout.fillWidth: true }
+                        PlasmaComponents.Label {
+                            text: ledBrightness.value + " %"
+                            font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                            font.weight: Font.Bold
+                        }
+                    }
+
+                        PlasmaComponents.Slider {
+                        id: ledBrightness
+                        from: 0; to: 100; stepSize: 5
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        // initialized from the daemon's configured brightness;
+                        // held while dragging AND for 4 s after the commit
+                        // (the status keeps the old value until the daemon
+                        // reloads — without the lock the thumb flickers back)
+                        Binding on value {
+                            when: !ledBrightness.pressed && !root.ledBusy && root.ledBright >= 0
+                            value: root.ledBright
+                        }
+                        onPressedChanged: {
+                            if (!pressed) {
+                                root.ledBusy = true
+                                root.exec(root.helper + " led bright " + value)
+                                ledLock.restart()
+                            }
+                        }
+                        Timer {
+                            id: ledLock
+                            interval: 4000
+                            onTriggered: root.ledBusy = false
+                        }
+                    }
+                }
+
+            // static color: KDE's native color button (opens the standard
+            // color dialog — wheel, hex, pipette; no hand-rolled picker)
+            RowLayout {
+                visible: root.padVisible && root.led === "static"
+                Layout.fillWidth: true
+                PlasmaComponents.Label {
+                    text: i18n("Color")
+                    font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                    color: Kirigami.Theme.disabledTextColor
+                }
+                Item { Layout.fillWidth: true }
+                KQuickControls.ColorButton {
+                    showAlphaChannel: false
+                    color: root.ledColor
+                    onAccepted: function(c) {
+                        root.ledColor = CLogic.colorHex(c)   // optimistic
+                        root.ledBusy = true
+                        ledLock.restart()
+                        // NB: the hex is sent WITHOUT the leading '#' — through
+                        // the exec transport a raw '#' starts a shell comment
+                        root.exec(root.helper + " led static " + root.ledColor.slice(1))
+                    }
+                }
+            }
+            }
             }
         }
     }

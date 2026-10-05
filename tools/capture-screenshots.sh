@@ -5,10 +5,12 @@
 #   - deploys throwaway plasmoid variants under DIFFERENT ids (.shot for the
 #     full view, .cshot for the compact one) — deploying the panel's own id
 #     crashes plasmashell (SIGSEGV), never do that;
-#   - full view: the window stays alive CHART_WAIT seconds (default 240 = the
-#     chart's 4-minute window) so the chart is fully populated; themes are
-#     switched on the LIVE window (plasma-apply-lookandfeel) so dark and
-#     light come from the same run without losing the chart;
+#   - full view: the capture variant is INJECTED with a synthetic chart
+#     history (120 plausible points, capture-only, never shipped) so the
+#     rolling window is fully populated at once — no 4-minute wait. The
+#     window still stays alive CHART_WAIT seconds so the live readouts
+#     (temps, averages, RPM) settle; themes are switched on the LIVE window
+#     (plasma-apply-lookandfeel) so dark and light come from the same run;
 #   - compact view: a 420x56 taskbar-like strip, frameGeometry first then
 #     noBorder, capture, crop to the content bounding box;
 #   - always restores the theme it started from.
@@ -19,7 +21,7 @@
 #
 # Options (environment):
 #   OUT_DIR=screenshots   output directory
-#   CHART_WAIT=240        seconds to let the chart fill (full view)
+#   CHART_WAIT=12         seconds to let the live readouts settle (full view)
 #   LIGHT_THEME=org.kde.breeze.desktop
 #
 # The machine's theme is recorded at start and restored on exit (trap).
@@ -29,12 +31,47 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/plasmoid/org.coolingctl"
 LOCAL="$HOME/.local/share/plasma/plasmoids"
 OUT_DIR="${OUT_DIR:-$ROOT/screenshots}"
-CHART_WAIT="${CHART_WAIT:-240}"
+CHART_WAIT="${CHART_WAIT:-12}"
 LIGHT_THEME="${LIGHT_THEME:-org.kde.breeze.desktop}"
 DARK_THEME="${DARK_THEME:-org.kde.breezedark.desktop}"
 KWIN_LOG_UNIT="plasma-kwin_wayland"
 
 mkdir -p "$OUT_DIR"
+
+# --- synthetic chart history (capture variant only) ---------------------------
+# Anchored on OBSERVED values (live helper readout at capture time): the
+# levels shown are the machine's real state; only the intra-window wobble
+# is generated (there is no real 4-minute history to replay).
+observed() { "$ROOT/plasmoid/org.coolingctl/contents/code/coolingctl.sh" status 2>/dev/null \
+             | cut -d'|' -f"$1"; }
+O_TCTL=$(observed 1);  [ -n "$O_TCTL" ] || O_TCTL=60
+O_GPU=$(observed 7);   [ -n "$O_GPU" ]  || O_GPU=40
+O_F1=$(observed 2);   O_F2=$(observed 3)
+[ -n "$O_F1" ] || O_F1=0; [ -n "$O_F2" ] || O_F2=0
+O_FAN=$(( (O_F1 + O_F2) / 2 ))
+O_PAD=$(observed 4);   [ -n "$O_PAD" ]  || O_PAD=500
+echo "seed anchored on observed values: tctl=$O_TCTL gpu=$O_GPU fan=$O_FAN pad=$O_PAD"
+SEED_JS="$(mktemp /tmp/coolingctl-seed-XXXXXX.js)"
+cat > "$SEED_JS" <<EOF
+    // capture variant only — injected by tools/capture-screenshots.sh,
+    // never shipped: pre-fill the chart anchored on the OBSERVED values
+    // (read at capture time); only the wobble is generated.
+    Component.onCompleted: {
+        const pts = []
+        const tctl0 = $O_TCTL, gpu0 = $O_GPU, fan0 = $O_FAN, pad0 = $O_PAD
+        for (let i = 0; i < root.maxPoints; i++) {
+            const s = Math.sin(i / 9), c = Math.cos(i / 7)
+            pts.push({
+                tctl: Math.round((tctl0 + s * 1.5) * 10) / 10,
+                gpu: Math.round((gpu0 + c * 1.0) * 10) / 10,
+                fan: Math.round(fan0 * (1 + s * 0.04)),
+                pad: Math.round(pad0 * (1 + c * 0.02))
+            })
+        }
+        root.history = pts
+    }
+EOF
+
 
 # --- theme bookkeeping -------------------------------------------------------
 THEME0=$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)
@@ -47,6 +84,7 @@ cleanup() {
     restore_theme
     pkill -x plasmawindowed 2>/dev/null
     rm -rf "$LOCAL/org.coolingctl.shot" "$LOCAL/org.coolingctl.cshot"
+    rm -f "$SEED_JS"
     kbuildsycoca6 --noincremental >/dev/null 2>&1
 }
 trap cleanup EXIT INT TERM
@@ -61,6 +99,23 @@ deploy_variant() { # <suffix> <preferred>
         sed -i "s/preferredRepresentation: compactRepresentation/preferredRepresentation: fullRepresentation/" \
             "$LOCAL/$id/contents/ui/main.qml"
     chmod 755 "$LOCAL/$id/contents/code/coolingctl.sh"
+    # plasmawindowed serves compiled QML from its disk cache: stale .qmlc
+    # files mean the captures would show an OUTDATED UI. Purge before deploy.
+    rm -rf "$HOME/.cache/plasmawindowed/qmlcache"
+    # the capture variant must be DETERMINISTIC: lock the tab bar so a
+    # curious click during the chart wait cannot leave the window on the
+    # Lighting tab when the captures fire (lived bug: the official shots
+    # showed Lighting twice, Cooling never)
+    [ "$2" = "full" ] && \
+        sed -i "/id: mainTabs/a\\                enabled: false" \
+            "$LOCAL/$id/contents/ui/main.qml"
+    # full view only: pre-fill the chart with 120 synthetic-but-plausible
+    # points so captures don't wait for the 4-minute rolling window. The
+    # hero readouts stay live (real daemon values). Capture variant only —
+    # the shipped plasmoid is untouched.
+    [ "$2" = "full" ] && \
+        sed -i "/property var history: \[\]/r $SEED_JS" \
+            "$LOCAL/$id/contents/ui/main.qml"
 }
 
 kw_run() { # <js body>: unique path per loadScript call (duplicates never run)
@@ -132,25 +187,30 @@ EOF
 set_theme() { plasma-apply-lookandfeel -a "$1" >/dev/null 2>&1; sleep 5; }
 
 # theme propagation to a live window is asynchronous and the apply itself
-# can silently fail (e.g. racing kbuildsycoca): verify the captured
-# background (corner pixel), re-apply the theme and retry on mismatch
-capture_until() { # <out.png> <dark|light> — capture, verify bg, re-apply+retry
-    local out="$1" want="$2" i corner theme
+# can silently fail (e.g. racing kbuildsycoca); verify the captured
+# background pixel AND the expected window size, re-apply/re-activate and
+# retry on mismatch (a busy user session steals the window focus)
+capture_until() { # <out.png> <dark|light> <min_w> <max_w>
+    local out="$1" want="$2" wmin="$3" wmax="$4" i corner width theme
     theme="$DARK_THEME"; [ "$want" = light ] && theme="$LIGHT_THEME"
-    for i in 0 1 2 3; do
+    for i in 0 1 2 3 4; do
         [ "$i" -gt 0 ] && set_theme "$theme"
         capture_active "$out"
-        corner=$(python3 -c "
+        # corner pixel: theme check; width: stolen-focus check (the
+        # plasmoid window is narrow, a user window is anything else)
+        eval "$(python3 -c "
 from PIL import Image
 im = Image.open('$out').convert('RGB')
 p = im.getpixel((3, 3))
-print((p[0] + p[1] + p[2]) // 3)
-" 2>/dev/null || echo -1)
-        if [ "$want" = dark ] && [ "$corner" -lt 100 ] 2>/dev/null; then return 0; fi
-        if [ "$want" = light ] && [ "$corner" -gt 160 ] 2>/dev/null; then return 0; fi
-        echo "   bg=$corner, want $want — re-applying $theme (try $i)"
+print(f'corner={(p[0]+p[1]+p[2])//3} width={im.size[0]}')
+" 2>/dev/null || echo 'corner=-1 width=0')"
+        if [ "$want" = dark ] && [ "$corner" -lt 100 ] 2>/dev/null \
+           && [ "$width" -ge "$wmin" ] && [ "$width" -le "$wmax" ]; then return 0; fi
+        if [ "$want" = light ] && [ "$corner" -gt 160 ] 2>/dev/null \
+           && [ "$width" -ge "$wmin" ] && [ "$width" -le "$wmax" ]; then return 0; fi
+        echo "   bg=$corner width=$width (want $want ${wmin}-${wmax}px) — retry $i"
     done
-    echo "WARN: $out may not be $want-themed (bg=$corner)"
+    echo "WARN: $out may be wrong (bg=$corner width=$width)"
     return 1
 }
 
@@ -160,17 +220,17 @@ deploy_variant shot full
 kbuildsycoca6 --noincremental >/dev/null 2>&1
 
 set_theme "$DARK_THEME"
-echo "== waiting ${CHART_WAIT}s for the chart to fill =="
+echo "== waiting ${CHART_WAIT}s for the live readouts to settle (chart is pre-seeded) =="
 setsid -f plasmawindowed org.coolingctl.shot >/dev/null 2>&1 &
 sleep "$CHART_WAIT"
 
 focus_and_shape "" ""   # natural window size, as validated
 echo "== capturing full view (dark) =="
-capture_until "$OUT_DIR/expanded-dark.png" dark
+capture_until "$OUT_DIR/expanded-dark.png" dark 300 700
 
 set_theme "$LIGHT_THEME"
 echo "== capturing full view (light, same window) =="
-capture_until "$OUT_DIR/expanded-light.png" light
+capture_until "$OUT_DIR/expanded-light.png" light 300 700
 pkill -x plasmawindowed; sleep 2
 
 # --- compact view: taskbar-like strip ----------------------------------------
@@ -182,9 +242,9 @@ set_theme "$DARK_THEME"
 sleep 6
 focus_and_shape 420 56
 echo "== capturing compact (dark) =="
-capture_until "$OUT_DIR/compact-dark.raw.png" dark
+capture_until "$OUT_DIR/compact-dark.raw.png" dark 380 460
 set_theme "$LIGHT_THEME"
-capture_until "$OUT_DIR/compact-light.raw.png" light
+capture_until "$OUT_DIR/compact-light.raw.png" light 380 460
 restore_theme
 
 crop_strip "$OUT_DIR/compact-dark.raw.png" "$OUT_DIR/compact-dark.png" dark
