@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] - 2026-10-05
+
+### Fixed
+- make the package job actually tag — safe.directory, loud push - `fix(release)` (48f64b8)
+- install the PKGBUILD depends in the package container - `fix(release)` (e968206)
+
 ## [0.7.0] - 2026-10-05
 
 ### Added
