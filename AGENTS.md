@@ -78,10 +78,10 @@ Options: `SKIP_INTEGRATION`, `RUN_SMOKE`, `COOLINGCTL_PYTHON`,
 `COOLINGCTL_REFERENCE`, `MYPY`.
 
 CI runs in an Arch container (`SKIP_INTEGRATION=1` — the live tests need
-the physical pad): `ci.yml` on PRs and post-merge on main;
-`release.yml` on `v*` tags builds the PKGBUILD as published — git
-source, no local shortcut — and uploads the package as an artifact (kept
-in a separate workflow so it never shows as a skipped check on PRs).
+the physical pad): `ci.yml` on PRs and post-merge on main; `release.yml`
+drives the automated release flow (see below — the `prepare` job after
+every merge to main, the `package` job on a release PR's merge; kept in
+a separate workflow so nothing ever shows as a skipped check on PRs).
 The smoke gate, the integration tests and the screenshots stay manual:
 they need the machine.
 
@@ -130,10 +130,14 @@ widget reloads NOTHING. The cycle:
    NOT enough, the window can keep showing the old UI. Purge that directory
    whenever an iteration's changes seem invisible.**
 4. `systemctl --user restart plasma-plasmashell.service`.
-5. After user validation: bump `pkgver`/`pkgrel` in `PKGBUILD` and
-   `Version` in `metadata.json`, `make check` (includes packaging build),
-   install, **restart `coolingctl.service`** (pacman never restarts user
-   services — the old daemon keeps running from the deleted binary),
+5. After user validation: land the change through its PR — the release
+   flow handles version, changelog, tag and package, so NEVER hand-bump
+   `pkgver`/`Version` on a dev branch. To test a working tree before
+   merging, deploy it under a DIFFERENT id (the step-2 trap applies).
+   Once the release is out: upgrade from it, **restart
+   `coolingctl.service`** (pacman never restarts user services — the old
+   daemon keeps running from the deleted binary) and
+   `plasma-plasmashell.service` (the session caches the plasmoid QML),
    then **delete the `~/.local` copy** — the package must be the
    only installed source.
 
@@ -164,8 +168,10 @@ Generated from the real widget, never mocked:
 - `make pkg` (or `makepkg -f`) builds `cooling-ctl-<ver>-<rel>-any.pkg.tar.zst`.
 - Modes are normalized at install (dirs 755, files 644, helper 755) — a
   source tree with wrong modes must never leak into the package.
-- Before publishing: fill the `# Maintainer:` line and the real `url` in
-  `PKGBUILD`, tag the release, update `CHANGELOG.md`.
+- Publishing is automated (see Release flow): the maintainer merges the
+  `chore(release)` PR, the CI tags and publishes — no manual tagging, no
+  hand-written changelog. The `# Maintainer:` line and `url` in `PKGBUILD`
+  are filled.
 
 ## Release flow (automated)
 
@@ -183,9 +189,10 @@ manual version math, no hand-written changelog sections:
    `chore(release): vX.Y.Z` PR opens automatically — the human gate
    stays: the maintainer merges it.
 3. Merging that PR (head commit `chore(release): vX.Y.Z`) triggers the
-   `package` job: it tags `vX.Y.Z` and builds the PKGBUILD exactly as
-   published (git source, no local shortcut), uploading the package as
-   an artifact.
+   `package` job: it tags `vX.Y.Z`, publishes the GitHub Release (notes
+   from the CHANGELOG section, the built `.pkg.tar.zst` attached to it)
+   and uploads the package as a workflow artifact — the PKGBUILD is built
+   exactly as published (git source, no local shortcut).
 
 ## Repository hygiene
 
@@ -200,8 +207,9 @@ manual version math, no hand-written changelog sections:
 - Contribution flow: changes land through a PR. An agent freely creates
   branches, commits and pushes PR branches on its own; it NEVER pushes to
   `main` (ruleset: PR required, `tests` check required, no force-push,
-  no deletion, no bypass for anyone) and never pushes tags without the
-  maintainer's go-ahead. CI must be green and the maintainer performs
-  the merge — always a **rebase merge**: semantic commits are preserved
+  no deletion, no bypass for anyone) and never pushes tags by itself —
+  tags are the `package` job's job (a manual tag push needs the
+  maintainer's explicit go-ahead). CI must be green and the maintainer
+  performs the merge — always a **rebase merge**: semantic commits are preserved
   on a linear history, never squashed; keep every commit on a PR branch
   buildable and test-green.
