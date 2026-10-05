@@ -168,8 +168,11 @@ Generated from the real widget, never mocked:
 - No personal data: no usernames, emails, personal absolute paths, hostnames.
   Test-support paths come from environment variables, never hardcoded.
 - No build artifacts committed (`pkg/`, `*.pkg.tar.*` are gitignored).
-- Commit messages: imperative subject line + body explaining why. Amend
-  freely while a change has not been published (pushed on an open PR).
+- Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org):
+  `type(scope): description` — types: feat, fix, docs, ci, test, chore, refactor;
+  `!` marks breaking changes (detail in the body or a `BREAKING CHANGE:`
+  footer); the body explains why. Amend freely while a change has not been
+  published (pushed on an open PR).
 - Contribution flow: changes land through a PR. An agent freely creates
   branches, commits and pushes PR branches on its own; it NEVER pushes to
   `main` (ruleset: PR required, `tests` check required, no force-push,
