@@ -6,8 +6,10 @@
 # Commandes :
 #   status               -> 13-field line
 #                           "tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct"
-#   set-floor <pct>    -> writes the game floor + SIGHUP (applied hot)
-#   set-default-floor <pct> -> writes the default-mode floor + SIGHUP
+#                           floor_pct / default_floor_pct: -2 = off (the pad
+#                           is released), -1 = unknown (no status file)
+#   set-floor <pct>|off -> writes the game floor + SIGHUP (applied hot)
+#   set-default-floor <pct>|off -> writes the default-mode floor + SIGHUP
 #   mode <game|default|free> -> SIGUSR1/SIGUSR2/SIGWINCH
 #
 # Environment overrides (tests / other machines):
@@ -118,15 +120,21 @@ cmd_status() {
 }
 
 # shared body of set-floor / set-default-floor: clamp, rewrite the
-# single-point curve json, SIGHUP the daemon (applied hot)
+# single-point curve json, SIGHUP the daemon (applied hot).
+# "off" is the release sentinel: percent -1 in the json, the daemon
+# then sends the pad's off report instead of a speed.
 write_floor() {
     JSON="$1"
     PCT="$2"
-    case "$PCT" in
-        ''|*[!0-9]*) echo "invalid pct"; exit 1 ;;
-    esac
-    [ "$PCT" -gt 100 ] && PCT=100
-    sed -i "s/\"percent\": *[0-9]*/\"percent\": $PCT/g" "$JSON" || exit 1
+    if [ "$PCT" = "off" ]; then
+        PCT=-1
+    else
+        case "$PCT" in
+            ''|*[!0-9]*) echo "invalid pct"; exit 1 ;;
+        esac
+        [ "$PCT" -gt 100 ] && PCT=100
+    fi
+    sed -i "s/\"percent\": *-\{0,1\}[0-9]*/\"percent\": $PCT/g" "$JSON" || exit 1
     env -u LD_LIBRARY_PATH systemctl --user kill --signal=SIGHUP coolingctl.service
     echo "ok"
 }
@@ -186,5 +194,5 @@ case "$1" in
     set-default-floor)  cmd_set_default_floor "$2" ;;
     mode)         cmd_mode "$2" ;;
     led)          cmd_led "$2" "$3" ;;
-    *)            echo "usage: $0 status|set-floor <pct>|set-default-floor <pct>|mode <game|default|free>|led <keep|off|spectrum|heat>|led static <#rrggbb>|led wave <left|right>|led bright <0-100>"; exit 1 ;;
+    *)            echo "usage: $0 status|set-floor <pct>|off|set-default-floor <pct>|off|mode <game|default|free>|led <keep|off|spectrum|heat>|led static <#rrggbb>|led wave <left|right>|led bright <0-100>"; exit 1 ;;
 esac

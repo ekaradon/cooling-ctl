@@ -81,7 +81,7 @@ start — edit them freely, `SIGHUP` reloads. Reference:
 ```
 
 `game-floor.json` — a single-point curve; its **first point's percent is the
-game mode fan floor** (the pad never runs below it while gaming):
+game mode fan speed** (the pad runs at that fixed speed while gaming):
 
 ```json
 {
@@ -94,12 +94,19 @@ game mode fan floor** (the pad never runs below it while gaming):
 }
 ```
 
+`-1` instead of a percent means **off**: the pad is released (the daemon
+sends the pad's off report and commands nothing) for as long as the floor
+is off — the slider's bottom position in the plasmoid.
+
 `default-floor.json` — a single-point curve, same shape; its **first point's
 percent is the default mode fan floor**. The default curve never commands
 below it. `0` (the default) lets the curve alone decide. A floor above 0
 keeps the pad spinning at a stable low speed — the pad cannot sustain its
 own 500 RPM minimum (the motor stalls and restarts in a loop), so a curve
-bottoming at 0 % churns unless a floor lifts it:
+bottoming at 0 % churns unless a floor lifts it. `-1` means **off**: no
+floor, and when the curve bottoms out the pad is released instead of
+churning at the stall point; the curve reclaims control as soon as it
+rises above it:
 
 ```json
 {
@@ -137,10 +144,12 @@ systemctl --user kill --signal=SIGUSR1 coolingctl.service
 
 Live state is published atomically every 3 s in
 `$XDG_RUNTIME_DIR/coolingctl.status`
-(`mode,temp,floor_pct,floor_rpm,default_floor_pct,default_floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
-The helper `coolingctl.sh status` prints
+(`mode,temp,floor_pct,floor_rpm,default_floor_pct,default_floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`;
+`floor_pct`/`default_floor_pct` publish `-2` when the floor is off, `-1`
+when unknown). The helper `coolingctl.sh status` prints
 `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct`;
-actions: `set-floor <pct>`, `set-default-floor <pct>`, `mode <game|default|free>`,
+actions: `set-floor <pct>|off`, `set-default-floor <pct>|off`,
+`mode <game|default|free>`,
 `led <keep|off|static|spectrum|wave|heat>`, `led static <#rrggbb>`,
 `led wave <left|right>`, `led bright <0-100>`.
 

@@ -43,6 +43,13 @@ Rules that follow from this shape:
   `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct`.
   The plasmoid parses with per-field fallbacks. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
+- Floors "off" (`percent: -1` in `game-floor.json` / `default-floor.json`,
+  helper verbs `set-floor off` / `set-default-floor off`, wire value `-2`
+  in the status file — `-1` stays "unknown"): the daemon RELEASES the pad
+  (off report) instead of commanding a speed. Game mode holds it released;
+  default mode rests it at the curve's bottom (the 500 RPM stall point)
+  and resumes when the curve rises. A true "fans stopped" command does not
+  exist in the known protocol — do not pretend otherwise in the UI.
 
 ## Internal fans: fw-fanctrl (host machine)
 

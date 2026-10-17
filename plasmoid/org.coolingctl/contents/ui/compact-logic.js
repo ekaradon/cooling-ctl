@@ -52,19 +52,41 @@ function gpuLoadText(gpu) {
     return Math.round(gpu) + " %"
 }
 
-// Snaps an RPM onto the slider's step grid (300 steps, 500..3200).
-// 500 = pad floor (0 %), 3200 = hardware maximum (100 %)
+// Slider grid of both floor sliders: 200 = the off position (one step
+// below the pad's 500 RPM floor), then 500..3200 in 300-RPM steps.
+// Off releases the pad (the daemon's off report): the fan rests instead
+// of churning at the 500 RPM stall point.
+const FLOOR_OFF_POS = 200
+
+// true when a slider position is the off position (anything below the
+// 500 step - half the distance to it, so the snap cannot jump back)
+function isFloorOff(v) {
+    return v <= 350
+}
+
+// Snaps an RPM/position onto the slider's step grid (300 steps, 200..3200).
+// 200 = off (pad released), 500 = pad floor (0 %), 3200 = hardware max (100 %)
 function snapFloor(rpm) {
+    if (isFloorOff(rpm)) return FLOOR_OFF_POS
     const from = 500, to = 3200, step = 300
     const snapped = from + Math.round((rpm - from) / step) * step
     return Math.max(from, Math.min(to, snapped))
 }
 
-// Pad percent -> commanded RPM, linear (the daemon's pct_to_rpm scale:
-// 0 % = 500, 100 % = 3200). NOT snapped: display and commit round
-// through snapFloor / rpmToPct themselves.
+// Pad percent -> slider position, linear (the daemon's pct_to_rpm scale:
+// 0 % = 500, 100 % = 3200). -2 = the wire sentinel for off (the floor
+// is off, the pad is released) -> the off position. NOT snapped: display
+// and commit round through snapFloor / floorArg themselves.
 function pctToRpm(pct) {
+    if (pct === -2) return FLOOR_OFF_POS
     return 500 + pct * 27
+}
+
+// Slider position -> helper argument: "off" (release) or the integer
+// percent (what the helper's set-floor / set-default-floor verbs accept)
+function floorArg(rpm) {
+    if (isFloorOff(rpm)) return "off"
+    return String(Math.round((snapFloor(rpm) - 500) / 27))
 }
 
 // Commanded RPM -> pad percent, rounded to an integer (inverse of

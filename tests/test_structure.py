@@ -57,6 +57,9 @@ package). These static checks catch them before installation.
       5 s resync has not ticked yet, so the brightness thumb sat at
       0 % right after switching heat -> wave on a fresh popup
       (same hole for the floor slider at its minimum)
+  S57 both floor sliders must offer the off position (grid start 200,
+      commits via floorArg): "off" is a release order for the pad, not
+      a speed - the UI must be able to stop the pad in any mode
 """
 import os
 import re
@@ -263,6 +266,28 @@ class TestStructureQml(unittest.TestCase):
                          "a lock Timer must release its flag, never latch it")
         self.assertIn("onTriggered: root.modeBusy = false", self.qml,
                       "modeLock must release modeBusy after its 4 s hold")
+
+    def test_s57_off_position(self):
+        """User request: the pad must be stoppable from the UI, whatever
+        the mode. Both floor sliders start their grid at 200 = the off
+        position (one step below the 500 RPM pad floor); commits go
+        through CLogic.floorArg ("off" or the percent) and the labels
+        show i18n("off") instead of a fake RPM value."""
+        self.assertEqual(self.qml.count("from: 200"), 2,
+                         "both floor sliders must offer the off position")
+        self.assertNotIn("from: 500", self.qml,
+                         "the old 500-only grid must not resurface")
+        self.assertEqual(self.qml.count("CLogic.floorArg("), 2,
+                         "each slider commits through floorArg (off or pct)")
+        self.assertEqual(self.qml.count('i18n("off")'), 4,
+                         "each slider labels the off position twice "
+                         "(dragging + resting)")
+        # the off wire sentinel must keep the sliders alive: -1 stays
+        # "unknown" (disabled slider), -2 is a usable value
+        self.assertIn("readonly property bool floorKnown: root.floor >= 0 || root.floor === -2",
+                      self.qml)
+        self.assertIn("readonly property bool defaultFloorKnown: root.defaultFloor >= 0 || root.defaultFloor === -2",
+                      self.qml)
 
     def test_s53_sliders_seed_on_creation(self):
         """Lived bug 2026-10-05: the full view is created when the popup

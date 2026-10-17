@@ -20,6 +20,10 @@ PlasmoidItem {
     property string mode: "?"
     property real floor: -1
     property real defaultFloor: -1
+    // floor states on the wire: -1 = unknown (daemon absent), -2 = off
+    // (the pad is released), >= 0 = the configured percent
+    readonly property bool floorKnown: root.floor >= 0 || root.floor === -2
+    readonly property bool defaultFloorKnown: root.defaultFloor >= 0 || root.defaultFloor === -2
     property real cpu: 0
     property real gpuLoad: -1
     property string led: "keep"
@@ -452,7 +456,7 @@ PlasmoidItem {
                 visible: root.padVisible && root.mode === "game"
                 Layout.fillWidth: true
                 PlasmaComponents.Label {
-                    text: i18n("Game mode minimum RPM")
+                    text: i18n("Game mode fan speed")
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
                     color: Kirigami.Theme.disabledTextColor
                 }
@@ -460,7 +464,9 @@ PlasmoidItem {
                 PlasmaComponents.Label {
                     text: {
                         if (root.sliderBusy || floorSlider.pressed)
-                            return CLogic.snapFloor(floorSlider.value) + " RPM …"
+                            return CLogic.isFloorOff(floorSlider.value) ? i18n("off") + " …" : CLogic.snapFloor(floorSlider.value) + " RPM …"
+                        if (root.floor === -2)
+                            return i18n("off")
                         return root.floor >= 0
                                 ? CLogic.snapFloor(CLogic.pctToRpm(root.floor)) + " RPM · " + Math.round(root.floor) + " %"
                                 : "—"
@@ -475,10 +481,10 @@ PlasmoidItem {
                 visible: root.padVisible && root.mode === "game" && root.polls > 0
                 Layout.fillWidth: true
                 Layout.bottomMargin: Kirigami.Units.smallSpacing
-                from: 500
+                from: 200
                 to: 3200
                 stepSize: 300
-                enabled: root.floor >= 0
+                enabled: root.floorKnown
                 // handle snapped while dragging, the pattern of the Animation speed
                 // slider of Plasma's landing page (kcms/landingpage): SnapAlways
                 // snaps the position onto the step grid on every move.
@@ -490,8 +496,8 @@ PlasmoidItem {
                 // change-connections and the 5 s resync both arrive too
                 // late on a freshly opened popup
                 Component.onCompleted: {
-                    if (!root.sliderBusy && root.floor >= 0)
-                        floorSlider.value = 500 + root.floor * 27
+                    if (!root.sliderBusy && root.floorKnown)
+                        floorSlider.value = CLogic.pctToRpm(root.floor)
                 }
 
                 // QQC2 note: Slider exposes neither onPressed nor onReleased as
@@ -512,8 +518,7 @@ PlasmoidItem {
                 }
 
                 function commitFloor() {
-                    const cible = CLogic.snapFloor(floorSlider.value)
-                    root.exec(root.helper + " set-floor " + CLogic.rpmToPct(cible))
+                    root.exec(root.helper + " set-floor " + CLogic.floorArg(floorSlider.value))
                 }
 
                 Timer {
@@ -525,7 +530,7 @@ PlasmoidItem {
                 Connections {
                     target: root
                     function onFloorChanged() {
-                        if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
+                        if (!root.sliderBusy && !floorSlider.pressed && root.floorKnown)
                             floorSlider.value = CLogic.pctToRpm(root.floor)
                     }
                 }
@@ -537,7 +542,7 @@ PlasmoidItem {
                     repeat: true
                     running: true
                     onTriggered: {
-                        if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
+                        if (!root.sliderBusy && !floorSlider.pressed && root.floorKnown)
                             floorSlider.value = CLogic.pctToRpm(root.floor)
                     }
                 }
@@ -545,7 +550,8 @@ PlasmoidItem {
 
             // default mode: same pattern, its own floor (the pad cannot
             // sustain its 500 RPM minimum - a floor above it keeps the
-            // fan spinning instead of stalling in a start/stop loop)
+            // fan spinning instead of stalling in a start/stop loop; the
+            // off position releases the pad at the curve's bottom instead)
             RowLayout {
                 visible: root.padVisible && root.mode === "default"
                 Layout.fillWidth: true
@@ -558,7 +564,9 @@ PlasmoidItem {
                 PlasmaComponents.Label {
                     text: {
                         if (root.defaultSliderBusy || defaultFloorSlider.pressed)
-                            return CLogic.snapFloor(defaultFloorSlider.value) + " RPM …"
+                            return CLogic.isFloorOff(defaultFloorSlider.value) ? i18n("off") + " …" : CLogic.snapFloor(defaultFloorSlider.value) + " RPM …"
+                        if (root.defaultFloor === -2)
+                            return i18n("off")
                         return root.defaultFloor >= 0
                                 ? CLogic.snapFloor(CLogic.pctToRpm(root.defaultFloor)) + " RPM · " + Math.round(root.defaultFloor) + " %"
                                 : "—"
@@ -572,17 +580,17 @@ PlasmoidItem {
                 visible: root.padVisible && root.mode === "default" && root.polls > 0
                 Layout.fillWidth: true
                 Layout.bottomMargin: Kirigami.Units.smallSpacing
-                from: 500
+                from: 200
                 to: 3200
                 stepSize: 300
-                enabled: root.defaultFloor >= 0
+                enabled: root.defaultFloorKnown
                 snapMode: QQC2.Slider.SnapAlways
 
                 // seed on creation (same as the game floor slider): the
                 // change-connections and the 5 s resync both arrive too
                 // late on a freshly opened popup
                 Component.onCompleted: {
-                    if (!root.defaultSliderBusy && root.defaultFloor >= 0)
+                    if (!root.defaultSliderBusy && root.defaultFloorKnown)
                         defaultFloorSlider.value = CLogic.pctToRpm(root.defaultFloor)
                 }
 
@@ -600,8 +608,7 @@ PlasmoidItem {
                 }
 
                 function commitDefaultFloor() {
-                    const cible = CLogic.snapFloor(defaultFloorSlider.value)
-                    root.exec(root.helper + " set-default-floor " + CLogic.rpmToPct(cible))
+                    root.exec(root.helper + " set-default-floor " + CLogic.floorArg(defaultFloorSlider.value))
                 }
 
                 Timer {
@@ -613,7 +620,7 @@ PlasmoidItem {
                 Connections {
                     target: root
                     function onDefaultFloorChanged() {
-                        if (!root.defaultSliderBusy && !defaultFloorSlider.pressed && root.defaultFloor >= 0)
+                        if (!root.defaultSliderBusy && !defaultFloorSlider.pressed && root.defaultFloorKnown)
                             defaultFloorSlider.value = CLogic.pctToRpm(root.defaultFloor)
                     }
                 }
@@ -623,7 +630,7 @@ PlasmoidItem {
                     repeat: true
                     running: true
                     onTriggered: {
-                        if (!root.defaultSliderBusy && !defaultFloorSlider.pressed && root.defaultFloor >= 0)
+                        if (!root.defaultSliderBusy && !defaultFloorSlider.pressed && root.defaultFloorKnown)
                             defaultFloorSlider.value = CLogic.pctToRpm(root.defaultFloor)
                     }
                 }

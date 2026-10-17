@@ -7,6 +7,8 @@ Covered specs:
   S9  the state file is published and schema-valid continuously
   S10 mode switching by signal without a restart (NRestarts unchanged)
   S11 floor modified hot without restarting the daemon
+  S57 the off floor releases the pad: floor_pct publishes -2, the
+      daemon commands nothing anymore (rpm_cmd -1), no restart
 """
 import os
 import re
@@ -70,7 +72,7 @@ class TestIntegration(unittest.TestCase):
         with open(GAMING_JSON) as f:
             content = f.read()
         with open(GAMING_JSON, "w") as f:
-            f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {floor}', content))
+            f.write(re.sub(r'"percent": *-?[0-9]+', f'"percent": {floor}', content))
         signal_daemon("SIGHUP")  # resync the daemon with the restored file
         mode = cls.initial_state["mode"]
         sig = {"game": "SIGUSR1", "default": "SIGUSR2", "free": "SIGWINCH"}[mode]
@@ -80,7 +82,7 @@ class TestIntegration(unittest.TestCase):
     def _read_floor():
         with open(GAMING_JSON) as f:
             content = f.read()
-        m = re.search(r'"percent": *([0-9]+)', content)
+        m = re.search(r'"percent": *(-?[0-9]+)', content)
         return int(m.group(1))
 
     @staticmethod
@@ -117,11 +119,32 @@ class TestIntegration(unittest.TestCase):
         with open(GAMING_JSON) as f:
             content = f.read()
         with open(GAMING_JSON, "w") as f:
-            f.write(re.sub(r'"percent": *[0-9]*', '"percent": 33', content))
+            f.write(re.sub(r'"percent": *-?[0-9]+', '"percent": 33', content))
         signal_daemon("SIGHUP")
         self.assertTrue(
             wait_for(lambda: read_status()["floor_rpm"] == "1400"),
             f"floor_rpm={read_status().get('floor_rpm')} != 1400")
+        self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
+
+    def test_s57_game_floor_off_releases(self):
+        n0 = self._nrestarts()
+        signal_daemon("SIGUSR1")
+        self.assertTrue(wait_for(lambda: read_status()["mode"] == "game"),
+                        "game mode not reached")
+        with open(GAMING_JSON) as f:
+            content = f.read()
+        with open(GAMING_JSON, "w") as f:
+            f.write(re.sub(r'"percent": *-?[0-9]+', '"percent": -1', content))
+        signal_daemon("SIGHUP")
+        # off publishes the wire sentinel -2 with floor_rpm 0
+        self.assertTrue(
+            wait_for(lambda: read_status().get("floor_pct") == "-2.0"),
+            f"floor_pct={read_status().get('floor_pct')} != -2.0")
+        self.assertEqual(read_status().get("floor_rpm"), "0")
+        # and the daemon commands nothing anymore: the pad is released
+        self.assertTrue(
+            wait_for(lambda: read_status().get("rpm_cmd") == "-1"),
+            f"rpm_cmd={read_status().get('rpm_cmd')} != -1 (pad not released)")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
 

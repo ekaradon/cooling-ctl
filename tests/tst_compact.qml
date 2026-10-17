@@ -95,15 +95,32 @@ TestCase {
     }
 
     function test_s29_slider_grid() {
-        // fixed point of the native slider (from 500, to 3200, stepSize 300,
+        // fixed point of the native slider (from 200, to 3200, stepSize 300,
         // snapMode SnapAlways): every grid step is stable under
-        // snapFloor, the max lands exactly on the grid, and the 10
+        // snapFloor, the max lands exactly on the grid, and the 11
         // ticks stay <= 20 (above that the Plasma wrapper stops drawing them)
-        for (let k = 0; k <= 9; k++)
-            compare(CL.snapFloor(500 + k * 300), 500 + k * 300, "step " + k)
-        verify((3200 - 500) % 300 === 0, "the max must land exactly on the grid")
-        compare((3200 - 500) / 300, 9)
-        verify((3200 - 500) / 300 <= 20, "above 20 steps the Plasma wrapper hides the ticks")
+        for (let k = 0; k <= 10; k++)
+            compare(CL.snapFloor(200 + k * 300), 200 + k * 300, "step " + k)
+        verify((3200 - 200) % 300 === 0, "the max must land exactly on the grid")
+        compare((3200 - 200) / 300, 10)
+        verify((3200 - 200) / 300 <= 20, "above 20 steps the Plasma wrapper hides the ticks")
+    }
+
+    function test_s57_floor_off_position() {
+        // off: the position one step below the 500 RPM pad floor - the
+        // pad is released instead of churning at its stall point
+        compare(CL.FLOOR_OFF_POS, 200)
+        verify(CL.isFloorOff(200), "the off position")
+        verify(CL.isFloorOff(350), "below the 500 step: still off")
+        verify(!CL.isFloorOff(360), "half past the step: snaps up to 500")
+        compare(CL.snapFloor(200), 200)
+        compare(CL.snapFloor(350), 200)
+        compare(CL.snapFloor(360), 500)
+        compare(CL.pctToRpm(-2), 200)     // wire sentinel -2 = off
+        compare(CL.floorArg(200), "off")
+        compare(CL.floorArg(350), "off")
+        compare(CL.floorArg(500), "0")    // the grid above off is unchanged
+        compare(CL.floorArg(2000), "56")
     }
 
     function test_s18_cpuText() {
