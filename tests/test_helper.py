@@ -6,8 +6,12 @@ Covered specs:
       mode passthrough: default|game|free (fallback default);
       pad_rpm, floor and default floor come from the state file; absent -> -1
   S7  `set-floor N`: writes the floor into the json (clamped 0..100),
-      bounded, invalid rejected; sends SIGHUP to the daemon
+      bounded, invalid rejected; sends SIGHUP to the daemon.
+      `off` writes the release sentinel -1 (S57), and a numeric write
+      must replace it (the minus sign in the json)
   S54 `set-default-floor N`: same contract as S7 on default-floor.json
+  S57 `status` passes the daemon's off sentinel through: floor_pct
+      -2 = off (released pad), -1 = unknown (no status file)
   S8  `mode X`: SIGUSR1 (game), SIGUSR2 (default), SIGWINCH (free);
       invalid mode rejected
   S35 `led X`: rewrites led.json (effect, static color, wave direction,
@@ -143,6 +147,17 @@ class TestStatus(unittest.TestCase):
         try:
             fields = env.run("status").stdout.strip().split("|")
             self.assertEqual(fields[9], "heat")
+        finally:
+            env.cleanup()
+    def test_off_floor_passthrough(self):
+        """S57: the daemon's off sentinel -2 passes through untouched
+        (the plasmoid's off position) - unlike -1, the unknown fallback."""
+        env = FakeEnv("mode=game\nrpm_reported=500\nfloor_pct=-2.0\n"
+                      "default_floor_pct=-2.0\n")
+        try:
+            fields = env.run("status").stdout.strip().split("|")
+            self.assertEqual(fields[5], "-2.0")
+            self.assertEqual(fields[12], "-2.0")
         finally:
             env.cleanup()
 class TestLed(unittest.TestCase):
@@ -313,6 +328,21 @@ class TestSetFloor(unittest.TestCase):
             self.assertNotEqual(env.run("set-floor").returncode, 0)
         finally:
             env.cleanup()
+    def test_off_and_back(self):
+        """S57: `off` writes the release sentinel -1, and a numeric write
+        replaces it (the minus sign already in the json must not survive)."""
+        env = FakeEnv()
+        try:
+            r = env.run("set-floor", "off")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(env.floor(), -1)
+            self.assertIn("--user kill --signal=SIGHUP coolingctl.service",
+                          env.systemctl_calls())
+            r = env.run("set-floor", "40")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(env.floor(), 40)
+        finally:
+            env.cleanup()
 
 class TestSetDefaultFloor(unittest.TestCase):
     """S54: `set-default-floor N` - same contract as set-floor (S7),
@@ -345,6 +375,16 @@ class TestSetDefaultFloor(unittest.TestCase):
             self.assertNotEqual(env.run("set-default-floor", "-3").returncode, 0)
             self.assertNotEqual(env.run("set-default-floor", "abc").returncode, 0)
             self.assertNotEqual(env.run("set-default-floor").returncode, 0)
+        finally:
+            env.cleanup()
+    def test_off(self):
+        """S57: `off` writes the release sentinel -1 on the default floor."""
+        env = FakeEnv()
+        try:
+            r = env.run("set-default-floor", "off")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(env.default_floor(), -1)
+            self.assertEqual(env.floor(), 30)  # the game floor is untouched
         finally:
             env.cleanup()
 class TestMode(unittest.TestCase):

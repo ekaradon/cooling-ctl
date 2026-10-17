@@ -12,6 +12,9 @@ Covered specs:
   S33 static color: QML color -> "#rrggbb" (native ColorButton)
   S34 LED packets byte-for-byte per padctl/openrazer + heat color ramp
       when missing (pacman never touches $HOME, the daemon provisions)
+  S56 silent->default config migration (renamed files carried over)
+  S57 the off floor releases the pad: game mode holds it released,
+      default mode rests it at the curve's stall point; wire -2 = off
 """
 import importlib.util
 import json
@@ -123,6 +126,78 @@ class TestDefaultFloor(unittest.TestCase):
     def test_none_passthrough(self):
         self.assertIsNone(d.apply_floor(None, 11.0))
 
+    def test_off_is_no_floor(self):
+        # off disables the floor entirely: whether the pad rests at the
+        # curve's bottom is mode_target's decision, not the floor's
+        self.assertEqual(d.apply_floor(0.0, d.FLOOR_OFF), 0.0)
+        self.assertEqual(d.apply_floor(42.5, d.FLOOR_OFF), 42.5)
+        self.assertIsNone(d.apply_floor(None, d.FLOOR_OFF))
+
+
+class TestModeTarget(unittest.TestCase):
+    """S57: the off floor releases the pad. Game mode holds it released
+    for as long as the floor is off; default mode rests it at the
+    curve's bottom instead of churning at the 500 RPM stall point
+    (measured 2026-10-12) and resumes commanding when the curve rises."""
+
+    # flat bottom then a ramp: the shape that actually reaches the 500 RPM
+    # stall point at idle temperatures
+    CURVE = [(0.0, 0.0), (60.0, 0.0), (90.0, 100.0)]
+
+    def test_game_fixed_floor(self):
+        self.assertEqual(
+            d.mode_target("game", 60.0, self.CURVE, 33.0, 11.0), (False, 33.0))
+
+    def test_game_without_temperature(self):
+        # a fixed-speed mode must not depend on the sensor
+        self.assertEqual(
+            d.mode_target("game", None, self.CURVE, 33.0, 11.0), (False, 33.0))
+
+    def test_game_off_releases(self):
+        self.assertEqual(
+            d.mode_target("game", 60.0, self.CURVE, d.FLOOR_OFF, 11.0),
+            (True, None))
+
+    def test_default_curve(self):
+        self.assertEqual(
+            d.mode_target("default", 50.0, self.CURVE, 33.0, 0.0), (False, 0.0))
+        self.assertEqual(
+            d.mode_target("default", 80.0, self.CURVE, 33.0, 0.0),
+            (False, d.interpolate(self.CURVE, 80.0)))
+
+    def test_default_floor_clamps(self):
+        self.assertEqual(
+            d.mode_target("default", 50.0, self.CURVE, 33.0, 11.0),
+            (False, 11.0))
+
+    def test_default_off_rests_at_stall(self):
+        # curve output 0 % = the 500 RPM stall point: rest, don't churn
+        self.assertEqual(
+            d.mode_target("default", 50.0, self.CURVE, 33.0, d.FLOOR_OFF),
+            (True, None))
+
+    def test_default_off_commands_above_stall(self):
+        self.assertEqual(
+            d.mode_target("default", 80.0, self.CURVE, 33.0, d.FLOOR_OFF),
+            (False, d.interpolate(self.CURVE, 80.0)))
+
+    def test_default_no_temperature(self):
+        self.assertEqual(
+            d.mode_target("default", None, self.CURVE, 33.0, 11.0),
+            (False, None))
+
+    def test_free_releases(self):
+        self.assertEqual(
+            d.mode_target("free", 60.0, self.CURVE, 33.0, 11.0), (True, None))
+
+    def test_off_wire_values(self):
+        # off publishes -2 on the wire (-1 stays the helper's unknown
+        # fallback) and 0 as its RPM: the pad rests
+        self.assertEqual(d.floor_wire(d.FLOOR_OFF), d.FLOOR_OFF_WIRE)
+        self.assertEqual(d.floor_wire(33.0), 33.0)
+        self.assertEqual(d.floor_rpm_wire(d.FLOOR_OFF), 0)
+        self.assertEqual(d.floor_rpm_wire(33.0), d.pct_to_rpm(33.0))
+
 
 class TestConfig(unittest.TestCase):
     """S4: curve JSON loading."""
@@ -184,6 +259,18 @@ class TestStatusFile(unittest.TestCase):
                                       rpm_cmd=None, rpm_rep=None, pad_present=False)
         try:
             for expected in ["temp=-1", "rpm_cmd=-1", "rpm_reported=-1", "pad_present=0"]:
+                self.assertIn(expected, content)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_off_floor_publishes_wire_sentinel(self):
+        """S57: an off floor publishes -2 (not -1, which the helper keeps
+        for "status file missing") and 0 RPM on the wire."""
+        tmpdir, content = self._write(floor_pct=d.FLOOR_OFF,
+                                      default_floor_pct=d.FLOOR_OFF)
+        try:
+            for expected in ["floor_pct=-2", "floor_rpm=0",
+                             "default_floor_pct=-2", "default_floor_rpm=0"]:
                 self.assertIn(expected, content)
         finally:
             shutil.rmtree(tmpdir)

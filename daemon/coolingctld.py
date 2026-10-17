@@ -11,6 +11,12 @@ without ever restarting the process:
              NB: the floor used by game mode is the in-memory one;
              any change to the json therefore goes through SIGHUP
 
+Floors "off" (percent -1 in game-floor.json / default-floor.json):
+the pad is RELEASED (off report) instead of commanded -
+  game mode: released for as long as the floor is off;
+  default mode: no floor, and the pad rests at the curve's bottom
+  instead of churning at its 500 RPM stall point (measured 2026-10-12).
+
 Data:
   curve   : $XDG_CONFIG_HOME/coolingctl/default-curve.json
   floor : $XDG_CONFIG_HOME/coolingctl/game-floor.json (first point)
@@ -47,6 +53,15 @@ REPORT_ID = 0x00
 MIN_RPM = 500
 MAX_RPM = 3200
 INTERVAL = 3
+
+# Floor "off" sentinel (config files and daemon memory): the floor is not a
+# speed but a release order - the daemon sends the off report and commands
+# nothing (game mode), or rests the pad at the curve's stall point
+# (default mode). On the status/helper wire it publishes FLOOR_OFF_WIRE,
+# because -1 there already means "unknown" (the helper's fallback when the
+# status file is missing).
+FLOOR_OFF = -1
+FLOOR_OFF_WIRE = -2
 
 HEADER = bytearray([
     0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x0D, 0x10, 0x01, 0x02,
@@ -389,6 +404,7 @@ class State:
         self.floor_pct: float = 30
         self.default_floor_pct: float = 0
         self.last_rpm: int | None = None
+        self.released: bool = False   # pad released (off report sent)
         self.read_fails: int = 0
         self.led: dict[str, object] = {}  # led.json contents
         self.last_heat_rgb: tuple[int, int, int] | None = None  # heat dedup
@@ -464,13 +480,59 @@ def pct_to_rpm(pct: float) -> int:
 
 
 def apply_floor(pct: float | None, floor_pct: float) -> float | None:
-    """Clamp a curve output onto a floor percent (0 = no floor).
+    """Clamp a curve output onto a floor percent (0 = no floor,
+    FLOOR_OFF = no floor either - whether the pad rests at the curve's
+    bottom is mode_target's decision, not the floor's).
     The default-mode pad floor exists because the pad cannot sustain
     its 500 RPM minimum (motor stall/restart loop, measured 2026-10-12):
     a floor keeps the fan spinning at a stable low speed instead."""
     if pct is None:
         return None
+    if floor_pct == FLOOR_OFF:
+        return pct
     return max(pct, floor_pct)
+
+
+def mode_target(mode: str, temp: float | None,
+                curve: "list[tuple[float, float]]",
+                floor_pct: float, default_floor_pct: float,
+                ) -> tuple[bool, float | None]:
+    """(off, pct): the command target of one loop iteration.
+    off=True    -> release the pad (off report, no RPM frame);
+    pct=None    -> nothing to command (no temperature for the curve yet);
+    pct=float   -> the percent to command. Pure, unit-tested (S57):
+    game mode   -> the fixed floor, whatever the temperature (a missing
+                   k10temp must not stop a fixed-speed mode); off floor
+                   -> released;
+    default mode-> the curve clamped onto the default floor; with the
+                   floor off, a curve bottoming at the 500 RPM stall
+                   point rests the pad instead of churning it;
+    free mode   -> always released."""
+    if mode == "free":
+        return True, None
+    if mode == "game":
+        if floor_pct == FLOOR_OFF:
+            return True, None
+        return False, floor_pct
+    if temp is None:
+        return False, None
+    pct = apply_floor(interpolate(curve, temp), default_floor_pct)
+    if pct is None:
+        return False, None
+    if default_floor_pct == FLOOR_OFF and pct_to_rpm(pct) <= MIN_RPM:
+        return True, None    # curve at the stall point: rest, don't churn
+    return False, pct
+
+
+def floor_wire(pct: float) -> float:
+    """Config floor percent -> wire value: off publishes FLOOR_OFF_WIRE
+    (-1 stays the helper's unknown/absent fallback)."""
+    return FLOOR_OFF_WIRE if pct == FLOOR_OFF else pct
+
+
+def floor_rpm_wire(pct: float) -> int:
+    """Floor percent -> published RPM: off is 0 RPM (the pad rests)."""
+    return 0 if pct == FLOOR_OFF else pct_to_rpm(pct)
 
 
 def write_status(mode: str, temp: float | None, floor_pct: float,
@@ -484,10 +546,10 @@ def write_status(mode: str, temp: float | None, floor_pct: float,
         with open(tmp, "w") as f:
             f.write(f"mode={mode}\n")
             f.write(f"temp={temp if temp is not None else -1}\n")
-            f.write(f"floor_pct={floor_pct}\n")
-            f.write(f"floor_rpm={pct_to_rpm(floor_pct)}\n")
-            f.write(f"default_floor_pct={default_floor_pct}\n")
-            f.write(f"default_floor_rpm={pct_to_rpm(default_floor_pct)}\n")
+            f.write(f"floor_pct={floor_wire(floor_pct)}\n")
+            f.write(f"floor_rpm={floor_rpm_wire(floor_pct)}\n")
+            f.write(f"default_floor_pct={floor_wire(default_floor_pct)}\n")
+            f.write(f"default_floor_rpm={floor_rpm_wire(default_floor_pct)}\n")
             f.write(f"rpm_cmd={rpm_cmd if rpm_cmd is not None else -1}\n")
             f.write(f"rpm_reported={rpm_rep if rpm_rep is not None else -1}\n")
             f.write(f"pad_present={1 if pad_present else 0}\n")
@@ -552,19 +614,25 @@ def main() -> None:
             new_mode = pending["mode"]
             pending["mode"] = None
             if isinstance(new_mode, str) and new_mode != st.mode:
+                st.mode = new_mode
+                st.last_rpm = None  # force a rewrite on mode change
+                st.released = False  # the new mode re-decides from scratch
                 if new_mode == "free" and dev is not None:
                     off_frame = build_off_report()
                     send(dev, off_frame)
                     st.last_frame = off_frame
+                    st.released = True
                     print("control released (off report)", flush=True)
-                st.mode = new_mode
-                st.last_rpm = None  # force a rewrite on mode change
                 print(f"mode -> {st.mode}", flush=True)
         if pending["reload"]:
             pending["reload"] = False
             st.reload()
             st.last_rpm = None
-            print(f"config reloaded (floor {st.floor_pct}%)", flush=True)
+            st.released = False  # an off floor must release, an off->value
+                                 # floor must resume: re-decide either way
+            floor_txt = ("off" if st.floor_pct == FLOOR_OFF
+                         else f"{st.floor_pct}%")
+            print(f"config reloaded (floor {floor_txt})", flush=True)
             if apply_led(dev, st.led):
                 prime_rpm_frame(dev, st)
 
@@ -575,13 +643,8 @@ def main() -> None:
             temp = read_temp(k10) if k10 else None
 
         # target depending on mode (free = no control)
-        pct = None
-        if temp is not None and st.mode != "free":
-            if st.mode == "game":
-                pct = st.floor_pct
-            else:
-                pct = apply_floor(interpolate(st.curve, temp),
-                                  st.default_floor_pct)
+        off, pct = mode_target(st.mode, temp, st.curve,
+                               st.floor_pct, st.default_floor_pct)
         rpm = pct_to_rpm(pct) if pct is not None else None
 
         # dedup (device granularity)
@@ -593,11 +656,24 @@ def main() -> None:
             dev = open_device()
             if dev is not None:
                 st.last_rpm = None
+                st.released = False  # the fresh handle must be re-driven
                 print("pad connected", flush=True)
 
         # apply
         pad_present = dev is not None
-        if dev is not None and rpm is not None and rpm != st.last_rpm:
+        if dev is not None and off and not st.released:
+            off_frame = build_off_report()
+            if send(dev, off_frame):
+                st.last_frame = off_frame   # prime_rpm_frame resends it
+                st.released = True
+                st.last_rpm = None
+                print("pad released (floor off)", flush=True)
+            else:
+                dev.close()
+                dev = None
+                pad_present = False
+                print("write failed, reconnecting...", flush=True)
+        elif dev is not None and not off and rpm is not None and rpm != st.last_rpm:
             frame = build_set_rpm_report(rpm)
             if not send(dev, frame):
                 dev.close()
@@ -606,6 +682,7 @@ def main() -> None:
                 print("write failed, reconnecting...", flush=True)
             else:
                 st.last_rpm = rpm
+                st.released = False
                 st.last_frame = frame   # for prime_rpm_frame after LED writes
 
         # heat LED effect: color AND brightness follow the temperature,
