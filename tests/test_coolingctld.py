@@ -103,6 +103,27 @@ class TestInterpolation(unittest.TestCase):
         self.assertIsNone(d.interpolate([], 50))
 
 
+class TestSilentFloor(unittest.TestCase):
+    """S52: the silent-mode curve output is clamped onto a configurable
+    floor percent (0 = no floor). The pad cannot sustain its 500 RPM
+    minimum (motor stall/restart loop, measured 2026-10-12): a floor
+    keeps the fan spinning at a stable low speed instead."""
+
+    def test_no_floor(self):
+        self.assertEqual(d.apply_floor(0.0, 0.0), 0.0)
+        self.assertEqual(d.apply_floor(42.5, 0.0), 42.5)
+
+    def test_clamps_below(self):
+        self.assertEqual(d.apply_floor(0.0, 11.0), 11.0)
+        self.assertEqual(d.apply_floor(3.7, 11.0), 11.0)
+
+    def test_passes_above(self):
+        self.assertEqual(d.apply_floor(55.0, 11.0), 55.0)
+
+    def test_none_passthrough(self):
+        self.assertIsNone(d.apply_floor(None, 11.0))
+
+
 class TestConfig(unittest.TestCase):
     """S4: curve JSON loading."""
 
@@ -138,7 +159,8 @@ class TestStatusFile(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         d.STATUS_FILE = os.path.join(tmpdir, "coolingctl.status")
         defaults = dict(mode="game", temp=63.5, floor_pct=30.0,
-                        rpm_cmd=1300, rpm_rep=1300, pad_present=True)
+                        rpm_cmd=1300, rpm_rep=1300, pad_present=True,
+                        silent_floor_pct=11.0)
         defaults.update(kw)
         d.write_status(**defaults)
         with open(d.STATUS_FILE) as f:
@@ -150,7 +172,8 @@ class TestStatusFile(unittest.TestCase):
         try:
             for expected in ["mode=game", "temp=63.5", "floor_pct=30.0",
                            "floor_rpm=1300", "rpm_cmd=1300",
-                           "rpm_reported=1300", "pad_present=1"]:
+                           "rpm_reported=1300", "pad_present=1",
+                           "silent_floor_pct=11.0", "silent_floor_rpm=800"]:
                 self.assertIn(expected, content)
             self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicity
         finally:
@@ -172,17 +195,24 @@ class TestDefaults(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         try:
             d.ensure_configs(curves_dir=tmpdir)
-            for name in ("silent-curve.json", "game-floor.json"):
+            for name in ("silent-curve.json", "game-floor.json",
+                         "silent-floor.json"):
                 path = os.path.join(tmpdir, name)
                 self.assertTrue(os.path.exists(path), f"{name} must be created")
                 with open(path) as f:
                     data = json.load(f)
                 self.assertIsInstance(data["curve"], list)
-            # the floor file is a single-point curve: the first point IS the floor
+            # the floor files are single-point curves: the first point IS the floor
             with open(os.path.join(tmpdir, "game-floor.json")) as f:
                 floor = json.load(f)["curve"]
             self.assertEqual(len(floor), 1)
             self.assertIsInstance(floor[0]["percent"], (int, float))
+            # the silent floor defaults to 0: the curve alone decides
+            # (identical to the pre-floor behavior, no surprise on upgrade)
+            with open(os.path.join(tmpdir, "silent-floor.json")) as f:
+                sfloor = json.load(f)["curve"]
+            self.assertEqual(len(sfloor), 1)
+            self.assertEqual(sfloor[0]["percent"], 0)
             # idempotent: an existing config is never overwritten
             with open(os.path.join(tmpdir, "game-floor.json"), "w") as f:
                 f.write('{"curve": [{"temp": 0, "percent": 50}]}')
