@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] — 2026-10-17
+
+### Added
+- off position on both floor sliders (stop the pad from the UI) - `feat` (e7c9f84)
+- rename the silent mode to default (breaking) - `feat` (3c4285f)
+
 ## [0.8.0] — 2026-10-17
 
 ### Added
