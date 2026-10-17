@@ -9,7 +9,7 @@
 
 # cooling-ctl
 
-A silent-first control stack for the **Razer Laptop Cooling Pad** on Linux: a
+A quiet-by-default control stack for the **Razer Laptop Cooling Pad** on Linux: a
 user daemon owning the pad's HID interface exclusively (signal-based mode
 switching, no restarts ever) and a KDE Plasma 6 plasmoid with live
 temperatures, fan speeds, an RPM chart, a stepped fan-floor slider and
