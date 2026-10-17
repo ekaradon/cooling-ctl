@@ -60,6 +60,11 @@ package). These static checks catch them before installation.
   S57 both floor sliders must offer the off position (grid start 200,
       commits via floorArg): "off" is a release order for the pad, not
       a speed - the UI must be able to stop the pad in any mode
+  S58 the tab buttons must refuse focus (focusPolicy NoFocus): the
+      PC3 TabButton style underlines its text for non-tab focus too,
+      and plasmashell's popup hands the initial focus to the first
+      focusable control — the focus underline stacked on the active
+      tab's highlight (double underline on popup open)
 """
 import os
 import re
@@ -288,6 +293,23 @@ class TestStructureQml(unittest.TestCase):
                       self.qml)
         self.assertIn("readonly property bool defaultFloorKnown: root.defaultFloor >= 0 || root.defaultFloor === -2",
                       self.qml)
+
+    def test_s58_tab_buttons_no_focus(self):
+        """Lived complaint: on opening the popup the active tab showed a
+        double underline - its own tab highlight plus the style's focus
+        underline under the text. TabButton is the only PC3 style that
+        draws its text underline for NON-tab focus too (focusReason
+        OtherFocusReason), and plasmashell hands the popup's initial
+        focus to the first focusable control - the tab bar. Every clause
+        of the style's visibleFocus needs the tab area to HOLD focus:
+        the pointer-driven tabs must refuse it entirely."""
+        self.assertEqual(self.qml.count("PlasmaComponents.TabButton"), 2)
+        self.assertEqual(self.qml.count("focusPolicy: Qt.NoFocus"), 2,
+                         "both tab buttons must refuse focus")
+        # the focus policy must live inside the tab buttons, not anywhere else
+        for block in self.qml.split("PlasmaComponents.TabButton")[1:]:
+            self.assertIn("focusPolicy: Qt.NoFocus", block.split("}")[0] + "}",
+                          "the focus policy belongs to the TabButton block")
 
     def test_s53_sliders_seed_on_creation(self):
         """Lived bug 2026-10-05: the full view is created when the popup

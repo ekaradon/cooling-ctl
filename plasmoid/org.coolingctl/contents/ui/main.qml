@@ -156,8 +156,23 @@ PlasmoidItem {
                 PlasmaComponents.TabBar {
                     id: mainTabs
                     Layout.fillWidth: true
-                    PlasmaComponents.TabButton { text: i18n("Cooling") }  // qmllint disable unqualified
-                    PlasmaComponents.TabButton { text: i18n("Lighting") }  // qmllint disable unqualified
+                    // NoFocus: TabButton is the only PC3 style that underlines
+                    // its text for NON-tab focus too (focusReason
+                    // OtherFocusReason), and plasmashell hands the freshly
+                    // opened popup's initial focus to the first focusable
+                    // control - here the tab bar: the focus underline then
+                    // stacks on the active tab's own highlight (double
+                    // underline until the first click moves the focus,
+                    // lived complaint). The tabs are pointer-driven: refuse
+                    // focus entirely.
+                    PlasmaComponents.TabButton {
+                        text: i18n("Cooling")  // qmllint disable unqualified
+                        focusPolicy: Qt.NoFocus
+                    }
+                    PlasmaComponents.TabButton {
+                        text: i18n("Lighting")  // qmllint disable unqualified
+                        focusPolicy: Qt.NoFocus
+                    }
                 }
 
                 PlasmaComponents.BusyIndicator {
