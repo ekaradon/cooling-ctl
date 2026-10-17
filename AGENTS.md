@@ -181,23 +181,39 @@ widget reloads NOTHING. The cycle:
 
 Generated from the real widget, never mocked:
 
+- **Run `make shots`** (`tools/screenshot.sh`): the whole pipeline in one
+  command — deploy the `.shot` / `.cshot` variants, smoke gate, launch,
+  fill, focus, dark + light captures with the theme switched on the LIVE
+  window, compact crop, sanity gates (a "light" capture that is not light
+  fails the run), cleanup and theme restore (in an EXIT trap, so a Ctrl-C
+  mid-capture still restores). `--out DIR` writes elsewhere (test runs),
+  `--fill SECONDS` overrides the default 4-minute chart fill. Manual runs
+  of the steps below are only for debugging the script itself.
 - **Full view**: variant `.shot` (different id,
-  `preferredRepresentation: fullRepresentation`), launched with
-  `setsid -f plasmawindowed <id>` (survives the calling shell). Keep the
-  window alive **4 minutes** so the chart fills, then
-  `spectacle -b -n -a` after focusing it via KWin scripting
-  (`workspace.activeWindow = w` — `w.active` is read-only). Switch themes
-  with `plasma-apply-lookandfeel` on the LIVE window: it recolors without
-  losing the chart, so dark and light come from the same 4-minute run.
+  `preferredRepresentation: fullRepresentation`), launched detached with
+  stdout/stderr redirected to /dev/null (else the caller's pipe stays
+  open until the window dies). Keep the window alive **4 minutes** so the
+  chart fills, then `spectacle -b -n -a` — it captures the ACTIVE window,
+  so refocus via KWin scripting right before, and set `noBorder = true`
+  (`workspace.activeWindow = w` — `w.active` is read-only) or the window
+  decoration pollutes the capture.
 - **Panel (compact) view**: variant `.cshot`, resized via
   `w.frameGeometry = {x, y, width, height}` (plain JS object; the apply is
   **asynchronous** — do not trust a print right after) into a taskbar-like
-  420x56 strip, `noBorder = true`, capture, crop the content bounding box.
-- KWin scripting API notes: `loadScript` needs a UNIQUE path per call
-  (duplicates silently do not run), `resize()` does not exist on
+  420x56 strip, `noBorder = true`, capture, crop the content bounding box
+  plus an 11 px right margin, full height.
+- KWin scripting API notes (Plasma 6): `loadScript(path, pluginName)`
+  needs a UNIQUE path AND name per call (duplicates silently do not run),
+  returns an int id and only REGISTERS the script — scripts actually run
+  when `Scripting.start()` is called, and there is no `/Scripting/<id>`
+  object to poke afterwards. `resize()` does not exist on
   XdgToplevelWindow, resourceClass is `org.kde.plasmawindowed`, `print()`
-  lands in the plasma-kwin_wayland journal.
-- Always restore the machine's theme after a light/dark pass.
+  lands in the `kwin_wayland` journal with a flush lag — never use prints
+  for control flow.
+- `plasma-apply-lookandfeel -a <theme>` applies; `-l` LISTS (a wrong flag
+  exits 0 and silently changes nothing — the sanity gates exist to catch
+  exactly this). Always restore the machine's theme after a light/dark
+  pass.
 
 ## Packaging
 
