@@ -39,8 +39,8 @@ Rules that follow from this shape:
   failed/absent pad or sensor degrades to an em-dash or an empty string per
   value (the chart shows "collecting data…" before the first poll),
   never to an error popup.
-- Helper `status` contract: 12 pipe-separated fields
-  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color`.
+- Helper `status` contract: 13 pipe-separated fields
+  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct`.
   The plasmoid parses with per-field fallbacks. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
 
@@ -64,7 +64,9 @@ Rules that follow from this shape:
 - Python: stdlib only (plus `hid`). The daemon must run on the plain system
   interpreter, no venv.
 - Configs: JSON under `~/.config/coolingctl/` (XDG). The daemon never writes
-  them; the helper's `set-floor` rewrites `game-floor.json` then SIGHUPs.
+  them; the helper's `set-floor` / `set-silent-floor` rewrite `game-floor.json`
+  / `silent-floor.json` (single-point curves, first point = the floor) then
+  SIGHUPs.
 - License: GPL-2.0-or-later. Imported third-party art/code must be compatible
   and credited in README + the file header (see the cat frames:
   CatWalk → RunCat lineage).

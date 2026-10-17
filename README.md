@@ -94,6 +94,24 @@ game mode fan floor** (the pad never runs below it while gaming):
 }
 ```
 
+`silent-floor.json` — a single-point curve, same shape; its **first point's
+percent is the silent mode fan floor**. The silent curve never commands
+below it. `0` (the default) lets the curve alone decide. A floor above 0
+keeps the pad spinning at a stable low speed — the pad cannot sustain its
+own 500 RPM minimum (the motor stalls and restarts in a loop), so a curve
+bottoming at 0 % churns unless a floor lifts it:
+
+```json
+{
+    "curve": [
+        { "temp": 0, "percent": 11 }
+    ],
+    "interval": 3,
+    "hysteresis": 2,
+    "sensors": "auto"
+}
+```
+
 Hook games through gamemode (flips the pad into game mode on launch, back on
 exit or crash):
 
@@ -119,10 +137,10 @@ systemctl --user kill --signal=SIGUSR1 coolingctl.service
 
 Live state is published atomically every 3 s in
 `$XDG_RUNTIME_DIR/coolingctl.status`
-(`mode,temp,floor_pct,floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
+(`mode,temp,floor_pct,floor_rpm,silent_floor_pct,silent_floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
 The helper `coolingctl.sh status` prints
-`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color`;
-actions: `set-floor <pct>`, `mode <game|silent|free>`,
+`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct`;
+actions: `set-floor <pct>`, `set-silent-floor <pct>`, `mode <game|silent|free>`,
 `led <keep|off|static|spectrum|wave|heat>`, `led static <#rrggbb>`,
 `led wave <left|right>`, `led bright <0-100>`.
 
