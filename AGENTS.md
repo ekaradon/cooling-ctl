@@ -40,7 +40,7 @@ Rules that follow from this shape:
   value (the chart shows "collecting data…" before the first poll),
   never to an error popup.
 - Helper `status` contract: 13 pipe-separated fields
-  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct`.
+  `tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct`.
   The plasmoid parses with per-field fallbacks. Changing the field count touches: helper,
   plasmoid parser, `tests/test_helper.py`, README — all four, always.
 
@@ -76,8 +76,8 @@ in `ExecStopPost`).
 - All comments, docstrings, UI strings and tool output are in English — the
   tests, packaging scripts, systemd unit and CI messages are no exception
   (review-enforced, no CI gate for language). The protocol too: the status
-  file publishes `mode=silent|game|free`, the helper
-  CLI verbs are `game|silent|free`, passthrough from the daemon. Changing this
+  file publishes `mode=default|game|free`, the helper
+  CLI verbs are `game|default|free`, passthrough from the daemon. Changing this
   vocabulary is a breaking change: bump the version and update daemon, helper,
   plasmoid and tests together.
 - The plasmoid is QML/JS; pure logic lives in `contents/ui/compact-logic.js`
@@ -91,8 +91,8 @@ in `ExecStopPost`).
 - Python: stdlib only (plus `hid`). The daemon must run on the plain system
   interpreter, no venv.
 - Configs: JSON under `~/.config/coolingctl/` (XDG). The daemon never writes
-  them; the helper's `set-floor` / `set-silent-floor` rewrite `game-floor.json`
-  / `silent-floor.json` (single-point curves, first point = the floor) then
+  them; the helper's `set-floor` / `set-default-floor` rewrite `game-floor.json`
+  / `default-floor.json` (single-point curves, first point = the floor) then
   SIGHUPs.
 - License: GPL-2.0-or-later. Imported third-party art/code must be compatible
   and credited in README + the file header (see the cat frames:

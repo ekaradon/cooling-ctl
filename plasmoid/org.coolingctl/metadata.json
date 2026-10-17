@@ -1,7 +1,7 @@
 {
     "KPlugin": {
         "Name": "Cooling Control",
-        "Description": "CPU/GPU temperatures, fans and Razer pad control (silent curve / game mode)",
+        "Description": "CPU/GPU temperatures, fans and Razer pad control (default curve / game mode)",
         "Icon": "preferences-system-power",
         "Authors": [{ "Name": "Cooling Control maintainers" }],
         "Category": "System Information",

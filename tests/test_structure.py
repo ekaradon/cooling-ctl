@@ -119,8 +119,8 @@ class TestStructureQml(unittest.TestCase):
                          "the custom drag was replaced by snapMode SnapAlways")
         self.assertIn('visible: root.padVisible && root.mode === "game" && root.polls > 0', self.qml,
                       "the game slider must not appear before the first data point")
-        self.assertIn('visible: root.padVisible && root.mode === "silent" && root.polls > 0', self.qml,
-                      "the silent slider must not appear before the first data point")
+        self.assertIn('visible: root.padVisible && root.mode === "default" && root.polls > 0', self.qml,
+                      "the default slider must not appear before the first data point")
 
     def test_s30_slider_valid_handlers(self):
         """Lived bug 2026-10-04: "Cannot assign to non-existent property
@@ -131,7 +131,7 @@ class TestStructureQml(unittest.TestCase):
         ("no matching signal found for handler" is categorized
         [unqualified], muted by UnqualifiedAccess=disable in .qmllint.ini).
         Every slider of the view is checked: the two floor sliders."""
-        for sid in ("floorSlider", "silentFloorSlider"):
+        for sid in ("floorSlider", "defaultFloorSlider"):
             block = self.qml.split(f"id: {sid}", 1)[1].split("Timer {", 1)[0]
             self.assertIn("onPressedChanged:", block,
                           f"{sid}: slider release goes through onPressedChanged")
@@ -226,15 +226,15 @@ class TestStructureQml(unittest.TestCase):
     def test_s27_slider_resilient(self):
         """The floor labels show the step (snapFloor over pctToRpm) and
         the sliders periodically resynchronize (anti-desync after a
-        failed drag) — both floors, game and silent."""
+        failed drag) — both floors, game and default."""
         self.assertIn("CLogic.snapFloor(CLogic.pctToRpm(root.floor))", self.qml,
                       "the resting label must show the step, not the raw computation")
-        self.assertIn("CLogic.snapFloor(CLogic.pctToRpm(root.silentFloor))", self.qml,
-                      "the silent resting label must show the step too")
+        self.assertIn("CLogic.snapFloor(CLogic.pctToRpm(root.defaultFloor))", self.qml,
+                      "the default resting label must show the step too")
         self.assertGreaterEqual(self.qml.count("floorSlider.value = CLogic.pctToRpm(root.floor)"), 2,
                                 "a resync mechanism is needed beyond onFloorChanged")
-        self.assertGreaterEqual(self.qml.count("silentFloorSlider.value = CLogic.pctToRpm(root.silentFloor)"), 2,
-                                "the silent slider needs the same resync (failed commits)")
+        self.assertGreaterEqual(self.qml.count("defaultFloorSlider.value = CLogic.pctToRpm(root.defaultFloor)"), 2,
+                                "the default slider needs the same resync (failed commits)")
 
     def test_s41_brightness_slider_without_conditional_binding(self):
         """Lived bug 2026-10-05: the brightness thumb flashed to 0 % on
@@ -271,7 +271,7 @@ class TestStructureQml(unittest.TestCase):
         at 0 % right after switching heat -> wave on a freshly opened
         popup (same hole for the floor slider at its minimum)."""
         for slider in ("id: ledBrightness", "id: floorSlider",
-                       "id: silentFloorSlider"):
+                       "id: defaultFloorSlider"):
             block = self.qml.split(slider, 1)[1].split("Slider {", 1)[0] \
                 + self.qml.split(slider, 1)[1]
             with self.subTest(slider=slider):

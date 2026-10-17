@@ -73,7 +73,7 @@ class TestIntegration(unittest.TestCase):
             f.write(re.sub(r'"percent": *[0-9]*', f'"percent": {floor}', content))
         signal_daemon("SIGHUP")  # resync the daemon with the restored file
         mode = cls.initial_state["mode"]
-        sig = {"game": "SIGUSR1", "silent": "SIGUSR2", "free": "SIGWINCH"}[mode]
+        sig = {"game": "SIGUSR1", "default": "SIGUSR2", "free": "SIGWINCH"}[mode]
         signal_daemon(sig)
 
     @staticmethod
@@ -92,7 +92,7 @@ class TestIntegration(unittest.TestCase):
     def test_s9_schema_status(self):
         fields = read_status()
         self.assertTrue(KEYS.issubset(fields), fields)
-        self.assertIn(fields["mode"], {"silent", "game", "free"})
+        self.assertIn(fields["mode"], {"default", "game", "free"})
         float(fields["temp"])
         float(fields["floor_pct"])
         int(fields["rpm_cmd"])
@@ -108,8 +108,8 @@ class TestIntegration(unittest.TestCase):
         self.assertTrue(wait_for(lambda: read_status()["mode"] == "game"),
                         "game mode not reached")
         signal_daemon("SIGUSR2")
-        self.assertTrue(wait_for(lambda: read_status()["mode"] == "silent"),
-                        "silent mode not reached")
+        self.assertTrue(wait_for(lambda: read_status()["mode"] == "default"),
+                        "default mode not reached")
         self.assertEqual(self._nrestarts(), n0, "the daemon restarted!")
 
     def test_s11_hot_floor_write(self):
