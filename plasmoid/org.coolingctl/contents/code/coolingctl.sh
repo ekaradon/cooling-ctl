@@ -4,20 +4,22 @@
 # the rest is read from /sys. Actions are signals, never restarts.
 #
 # Commandes :
-#   status               -> 9-field line
-#                           "tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct"
-#   set-floor <pct>    -> writes the floor + SIGHUP (applied hot)
+#   status               -> 13-field line
+#                           "tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct"
+#   set-floor <pct>    -> writes the game floor + SIGHUP (applied hot)
+#   set-silent-floor <pct> -> writes the silent-mode floor + SIGHUP
 #   mode <game|silent|free> -> SIGUSR1/SIGUSR2/SIGWINCH
 #
 # Environment overrides (tests / other machines):
 #   COOLINGCTL_STATUS_FILE, COOLINGCTL_CPU_STATE, COOLINGCTL_CURVES_DIR,
-#   COOLINGCTL_GAMING_JSON, COOLINGCTL_DRM_DIR
+#   COOLINGCTL_GAMING_JSON, COOLINGCTL_SILENT_JSON, COOLINGCTL_DRM_DIR
 
 STATUS_FILE="${COOLINGCTL_STATUS_FILE:-${XDG_RUNTIME_DIR:-/run/user/1000}/coolingctl.status}"
 CPU_STATE="${COOLINGCTL_CPU_STATE:-${XDG_RUNTIME_DIR:-/run/user/1000}/coolingctl.cpu}"
 DRM_DIR="${COOLINGCTL_DRM_DIR:-/sys/class/drm}"
 CONFIG_DIR="${COOLINGCTL_CURVES_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/coolingctl}"
 GAMING_JSON="${COOLINGCTL_GAMING_JSON:-$CONFIG_DIR/game-floor.json}"
+SILENT_JSON="${COOLINGCTL_SILENT_JSON:-$CONFIG_DIR/silent-floor.json}"
 LED_JSON="${COOLINGCTL_LED_JSON:-$CONFIG_DIR/led.json}"
 
 hwmon_by_name() {
@@ -99,30 +101,42 @@ cmd_status() {
     [ "$MODE" = "game" ] || [ "$MODE" = "free" ] || MODE=silent
     PAD_RPM=$(stget rpm_reported)
     FLOOR=$(stget floor_pct)
+    SFLOOR=$(stget silent_floor_pct)
     LED=$(stget led)
     LEDBRIGHT=$(stget led_brightness)
     LEDCOLOR=$(stget led_color)
     [ -z "$PAD_RPM" ] && PAD_RPM=-1
     [ -z "$FLOOR" ] && FLOOR=-1
+    [ -z "$SFLOOR" ] && SFLOOR=-1
     [ -z "$LED" ] && LED=keep
     [ -z "$LEDBRIGHT" ] && LEDBRIGHT=100
     [ -z "$LEDCOLOR" ] && LEDCOLOR="#ff6600"
 
     CPU=$(cpu_pct)
 
-    echo "${TCTL:--1}|${F1:--1}|${F2:--1}|${PAD_RPM}|${MODE}|${FLOOR}|${GPU}|${CPU}|${GPUPCT}|${LED}|${LEDBRIGHT}|${LEDCOLOR}"
+    echo "${TCTL:--1}|${F1:--1}|${F2:--1}|${PAD_RPM}|${MODE}|${FLOOR}|${GPU}|${CPU}|${GPUPCT}|${LED}|${LEDBRIGHT}|${LEDCOLOR}|${SFLOOR}"
 }
 
-cmd_set_floor() {
-    PCT="$1"
+# shared body of set-floor / set-silent-floor: clamp, rewrite the
+# single-point curve json, SIGHUP the daemon (applied hot)
+write_floor() {
+    JSON="$1"
+    PCT="$2"
     case "$PCT" in
         ''|*[!0-9]*) echo "invalid pct"; exit 1 ;;
     esac
-    [ "$PCT" -lt 0 ] && PCT=0
     [ "$PCT" -gt 100 ] && PCT=100
-    sed -i "s/\"percent\": *[0-9]*/\"percent\": $PCT/g" "$GAMING_JSON" || exit 1
+    sed -i "s/\"percent\": *[0-9]*/\"percent\": $PCT/g" "$JSON" || exit 1
     env -u LD_LIBRARY_PATH systemctl --user kill --signal=SIGHUP coolingctl.service
     echo "ok"
+}
+
+cmd_set_floor() {
+    write_floor "$GAMING_JSON" "$1"
+}
+
+cmd_set_silent_floor() {
+    write_floor "$SILENT_JSON" "$1"
 }
 
 cmd_led() {
@@ -169,7 +183,8 @@ cmd_mode() {
 case "$1" in
     status)       cmd_status ;;
     set-floor)  cmd_set_floor "$2" ;;
+    set-silent-floor)  cmd_set_silent_floor "$2" ;;
     mode)         cmd_mode "$2" ;;
     led)          cmd_led "$2" "$3" ;;
-    *)            echo "usage: $0 status|set-floor <pct>|mode <game|silent|free>|led <keep|off|spectrum|heat>|led static <#rrggbb>|led wave <left|right>|led bright <0-100>"; exit 1 ;;
+    *)            echo "usage: $0 status|set-floor <pct>|set-silent-floor <pct>|mode <game|silent|free>|led <keep|off|spectrum|heat>|led static <#rrggbb>|led wave <left|right>|led bright <0-100>"; exit 1 ;;
 esac
