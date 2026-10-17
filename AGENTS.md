@@ -181,39 +181,42 @@ widget reloads NOTHING. The cycle:
 
 Generated from the real widget, never mocked:
 
-- **Run `make shots`** (`tools/screenshot.sh`): the whole pipeline in one
-  command — deploy the `.shot` / `.cshot` variants, smoke gate, launch,
-  fill, focus, dark + light captures with the theme switched on the LIVE
-  window, compact crop, sanity gates (a "light" capture that is not light
-  fails the run), cleanup and theme restore (in an EXIT trap, so a Ctrl-C
-  mid-capture still restores). `--out DIR` writes elsewhere (test runs),
-  `--fill SECONDS` overrides the default 4-minute chart fill. Manual runs
-  of the steps below are only for debugging the script itself.
+- **Run `make shots`** (`tools/capture-screenshots.sh`, the validated
+  pipeline): deploy the `.shot` / `.cshot` variants, synthetic chart seed
+  (capture variant only — no 4-minute wait), tab bar locked against stray
+  clicks, `CHART_WAIT`s for the live readouts to settle, dark + light
+  captures with the theme switched on the LIVE window, per-capture
+  verification (background pixel + window width, five retries), compact
+  strip crop, cleanup and theme restore in a trap (a Ctrl-C mid-capture
+  still restores). Environment: `OUT_DIR` (default `screenshots/`, point it
+  at /tmp for a test run), `CHART_WAIT` (default 12 s), `LIGHT_THEME` /
+  `DARK_THEME`. Run the manual steps below only to debug the script.
 - **Full view**: variant `.shot` (different id,
   `preferredRepresentation: fullRepresentation`), launched detached with
   stdout/stderr redirected to /dev/null (else the caller's pipe stays
-  open until the window dies). Keep the window alive **4 minutes** so the
-  chart fills, then `spectacle -b -n -a` — it captures the ACTIVE window,
-  so refocus via KWin scripting right before, and set `noBorder = true`
-  (`workspace.activeWindow = w` — `w.active` is read-only) or the window
-  decoration pollutes the capture.
+  open until the window dies). Capture with `spectacle -b -n -a` — it
+  captures the ACTIVE window, so refocus via KWin scripting right
+  before, and set `noBorder = true` (`workspace.activeWindow = w` —
+  `w.active` is read-only) or the window decoration pollutes the
+  capture.
 - **Panel (compact) view**: variant `.cshot`, resized via
   `w.frameGeometry = {x, y, width, height}` (plain JS object; the apply is
   **asynchronous** — do not trust a print right after) into a taskbar-like
-  420x56 strip, `noBorder = true`, capture, crop the content bounding box
-  plus an 11 px right margin, full height.
-- KWin scripting API notes (Plasma 6): `loadScript(path, pluginName)`
-  needs a UNIQUE path AND name per call (duplicates silently do not run),
-  returns an int id and only REGISTERS the script — scripts actually run
-  when `Scripting.start()` is called, and there is no `/Scripting/<id>`
-  object to poke afterwards. `resize()` does not exist on
-  XdgToplevelWindow, resourceClass is `org.kde.plasmawindowed`, `print()`
-  lands in the `kwin_wayland` journal with a flush lag — never use prints
-  for control flow.
-- `plasma-apply-lookandfeel -a <theme>` applies; `-l` LISTS (a wrong flag
-  exits 0 and silently changes nothing — the sanity gates exist to catch
-  exactly this). Always restore the machine's theme after a light/dark
-  pass.
+  420x56 strip, `noBorder = true`, capture, crop the content bounding box.
+- KWin scripting API notes (Plasma 6): `loadScript(path[, pluginName])`
+  needs a UNIQUE path per call (duplicates silently do not run) and
+  returns an int id; the script object lives at `/Scripting/Script<id>`
+  with `run` / `stop` — there is NO `/Scripting/<id>` object;
+  `Scripting.start()` runs every registered script as a fallback.
+  `resize()` does not exist on XdgToplevelWindow, resourceClass is
+  `org.kde.plasmawindowed`, `print()` lands in the `kwin_wayland` journal
+  with a flush lag — never use prints for control flow.
+- `plasma-apply-lookandfeel -a <theme>` applies; `-l` LISTS and exits 0
+  with the theme silently unchanged. The machine's theme is AUTO
+  day/night: an EMPTY `LookAndFeelPackage` in kdeglobals is the normal
+  state — never force an explicit theme; the capture script restores it
+  (empty key back + `plasma-apply-colorscheme` on the time-appropriate
+  side).
 
 ## Packaging
 

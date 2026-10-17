@@ -59,7 +59,7 @@ smoke:
 	rm -f "$$LOG"
 
 shots:
-	@tools/screenshot.sh
+	@tools/capture-screenshots.sh
 
 pkg:
 	@env -u LD_LIBRARY_PATH makepkg -f
