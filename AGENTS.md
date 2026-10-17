@@ -179,44 +179,20 @@ widget reloads NOTHING. The cycle:
 
 ## Screenshots (`screenshots/`)
 
-Generated from the real widget, never mocked:
-
-- **Run `make shots`** (`tools/capture-screenshots.sh`, the validated
-  pipeline): deploy the `.shot` / `.cshot` variants, synthetic chart seed
-  (capture variant only — no 4-minute wait), tab bar locked against stray
-  clicks, `CHART_WAIT`s for the live readouts to settle, dark + light
-  captures with the theme switched on the LIVE window, per-capture
-  verification (background pixel + window width, five retries), compact
-  strip crop, cleanup and theme restore in a trap (a Ctrl-C mid-capture
-  still restores). Environment: `OUT_DIR` (default `screenshots/`, point it
-  at /tmp for a test run), `CHART_WAIT` (default 12 s), `LIGHT_THEME` /
-  `DARK_THEME`. Run the manual steps below only to debug the script.
-- **Full view**: variant `.shot` (different id,
-  `preferredRepresentation: fullRepresentation`), launched detached with
-  stdout/stderr redirected to /dev/null (else the caller's pipe stays
-  open until the window dies). Capture with `spectacle -b -n -a` — it
-  captures the ACTIVE window, so refocus via KWin scripting right
-  before, and set `noBorder = true` (`workspace.activeWindow = w` —
-  `w.active` is read-only) or the window decoration pollutes the
-  capture.
-- **Panel (compact) view**: variant `.cshot`, resized via
-  `w.frameGeometry = {x, y, width, height}` (plain JS object; the apply is
-  **asynchronous** — do not trust a print right after) into a taskbar-like
-  420x56 strip, `noBorder = true`, capture, crop the content bounding box.
-- KWin scripting API notes (Plasma 6): `loadScript(path[, pluginName])`
-  needs a UNIQUE path per call (duplicates silently do not run) and
-  returns an int id; the script object lives at `/Scripting/Script<id>`
-  with `run` / `stop` — there is NO `/Scripting/<id>` object;
-  `Scripting.start()` runs every registered script as a fallback.
-  `resize()` does not exist on XdgToplevelWindow, resourceClass is
-  `org.kde.plasmawindowed`, `print()` lands in the `kwin_wayland` journal
-  with a flush lag — never use prints for control flow.
-- `plasma-apply-lookandfeel -a <theme>` applies; `-l` LISTS and exits 0
-  with the theme silently unchanged. The machine's theme is AUTO
-  day/night: an EMPTY `LookAndFeelPackage` in kdeglobals is the normal
-  state — never force an explicit theme; the capture script restores it
-  (empty key back + `plasma-apply-colorscheme` on the time-appropriate
-  side).
+Generated from the real widget, never mocked — and never by hand either:
+**run `make shots`** (`tools/capture-screenshots.sh`). The script owns the
+whole pipeline: throwaway `.shot` / `.cshot` plasmoid variants under
+DIFFERENT ids (deploying under the panel's live `org.coolingctl` id
+crashes plasmashell — SIGSEGV as the plugin is swapped under it, never
+do that), synthetic chart seed anchored on the live values, tab bar
+locked, theme switched on the live window with the original state
+restored in a trap, per-capture verification with retries, compact
+strip crop. Environment knobs: `OUT_DIR` (default `screenshots/`),
+`CHART_WAIT` (default 12 s), `LIGHT_THEME` / `DARK_THEME`. When it
+breaks, fix the script — the Plasma/DE specifics it encodes (KWin
+scripting semantics, theme application, capture focus) live in its
+comments, not in this file: they are machine-environment knowledge, not
+repo knowledge.
 
 ## Packaging
 
