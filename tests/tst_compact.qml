@@ -73,6 +73,27 @@ TestCase {
         compare(CL.snapFloor(3300), 3200)   // beyond: clamp
     }
 
+    function test_s55_pct_to_rpm() {
+        compare(CL.pctToRpm(0), 500)      // 0 % = pad floor
+        compare(CL.pctToRpm(100), 3200)   // 100 % = hardware maximum
+        compare(CL.pctToRpm(50), 1850)    // linear scale (27 RPM per percent)
+        compare(CL.pctToRpm(11), 797)    // NOT snapped: raw linear value
+    }
+
+    function test_s55_rpm_to_pct() {
+        compare(CL.rpmToPct(500), 0)
+        compare(CL.rpmToPct(3200), 100)
+        compare(CL.rpmToPct(797), 11)
+        // a full step of the slider grid commits to the exact percent
+        compare(CL.rpmToPct(CL.snapFloor(2000)), 56)
+    }
+
+    function test_s55_round_trip() {
+        // every integer percent survives pctToRpm -> rpmToPct
+        for (let p = 0; p <= 100; p++)
+            compare(CL.rpmToPct(CL.pctToRpm(p)), p, "percent " + p)
+    }
+
     function test_s29_slider_grid() {
         // fixed point of the native slider (from 500, to 3200, stepSize 300,
         // snapMode SnapAlways): every grid step is stable under

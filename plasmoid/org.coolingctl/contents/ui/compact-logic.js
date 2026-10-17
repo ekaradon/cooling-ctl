@@ -60,6 +60,19 @@ function snapFloor(rpm) {
     return Math.max(from, Math.min(to, snapped))
 }
 
+// Pad percent -> commanded RPM, linear (the daemon's pct_to_rpm scale:
+// 0 % = 500, 100 % = 3200). NOT snapped: display and commit round
+// through snapFloor / rpmToPct themselves.
+function pctToRpm(pct) {
+    return 500 + pct * 27
+}
+
+// Commanded RPM -> pad percent, rounded to an integer (inverse of
+// pctToRpm's linear part — what the helper's set-floor verbs accept)
+function rpmToPct(rpm) {
+    return Math.round((rpm - 500) / 27)
+}
+
 // QML color object -> "#rrggbb" (drives the static LED color button)
 function colorHex(c) {
     const to2 = function (v) {

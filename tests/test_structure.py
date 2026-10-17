@@ -117,8 +117,10 @@ class TestStructureQml(unittest.TestCase):
                          "the slider's internal drag must not be disabled")
         self.assertNotIn("floorFromFraction", self.qml,
                          "the custom drag was replaced by snapMode SnapAlways")
-        self.assertIn('visible: root.padVisible && root.mode !== "free" && root.polls > 0', self.qml,
-                      "the slider must not appear before the first data point")
+        self.assertIn('visible: root.padVisible && root.mode === "game" && root.polls > 0', self.qml,
+                      "the game slider must not appear before the first data point")
+        self.assertIn('visible: root.padVisible && root.mode === "silent" && root.polls > 0', self.qml,
+                      "the silent slider must not appear before the first data point")
 
     def test_s30_slider_valid_handlers(self):
         """Lived bug 2026-10-04: "Cannot assign to non-existent property
@@ -127,16 +129,18 @@ class TestStructureQml(unittest.TestCase):
         is a property. Release hooks into onPressedChanged, drag/wheel/
         keyboard into moved(). qmllint misses this class of error
         ("no matching signal found for handler" is categorized
-        [unqualified], muted by UnqualifiedAccess=disable in .qmllint.ini)."""
-        block = self.qml.split("id: floorSlider", 1)[1].split("Timer {", 1)[0]
-        self.assertIn("onPressedChanged:", block,
-                      "slider release goes through onPressedChanged")
-        self.assertNotIn("onPressed:", block,
-                         "QQC2 Slider: pressed is a property, not a signal")
-        self.assertNotIn("onReleased:", block,
-                         "QQC2 Slider: the released() signal does not exist")
-        self.assertIn("onMoved:", block,
-                      "wheel/keyboard: moved() outside a drag must commit")
+        [unqualified], muted by UnqualifiedAccess=disable in .qmllint.ini).
+        Every slider of the view is checked: the two floor sliders."""
+        for sid in ("floorSlider", "silentFloorSlider"):
+            block = self.qml.split(f"id: {sid}", 1)[1].split("Timer {", 1)[0]
+            self.assertIn("onPressedChanged:", block,
+                          f"{sid}: slider release goes through onPressedChanged")
+            self.assertNotIn("onPressed:", block,
+                             f"{sid}: QQC2 Slider: pressed is a property, not a signal")
+            self.assertNotIn("onReleased:", block,
+                             f"{sid}: QQC2 Slider: the released() signal does not exist")
+            self.assertIn("onMoved:", block,
+                          f"{sid}: wheel/keyboard: moved() outside a drag must commit")
 
     def test_s31_cat_visible_in_dark_theme(self):
         """Lived bug 2026-10-04: the compact cat (a symbolic SVG with
@@ -220,12 +224,17 @@ class TestStructureQml(unittest.TestCase):
                       self.qml, "the spinner covers every pending commit")
 
     def test_s27_slider_resilient(self):
-        """The floor label shows the step (snapFloor) and the slider
-        periodically resynchronizes (anti-desync after a failed drag)."""
-        self.assertIn("CLogic.snapFloor(500 + root.floor * 27)", self.qml,
+        """The floor labels show the step (snapFloor over pctToRpm) and
+        the sliders periodically resynchronize (anti-desync after a
+        failed drag) — both floors, game and silent."""
+        self.assertIn("CLogic.snapFloor(CLogic.pctToRpm(root.floor))", self.qml,
                       "the resting label must show the step, not the raw computation")
-        self.assertGreaterEqual(self.qml.count("floorSlider.value = 500 + root.floor * 27"), 2,
+        self.assertIn("CLogic.snapFloor(CLogic.pctToRpm(root.silentFloor))", self.qml,
+                      "the silent resting label must show the step too")
+        self.assertGreaterEqual(self.qml.count("floorSlider.value = CLogic.pctToRpm(root.floor)"), 2,
                                 "a resync mechanism is needed beyond onFloorChanged")
+        self.assertGreaterEqual(self.qml.count("silentFloorSlider.value = CLogic.pctToRpm(root.silentFloor)"), 2,
+                                "the silent slider needs the same resync (failed commits)")
 
     def test_s41_brightness_slider_without_conditional_binding(self):
         """Lived bug 2026-10-05: the brightness thumb flashed to 0 % on
@@ -261,7 +270,8 @@ class TestStructureQml(unittest.TestCase):
         the 5 s resync has not ticked yet, so the brightness thumb sat
         at 0 % right after switching heat -> wave on a freshly opened
         popup (same hole for the floor slider at its minimum)."""
-        for slider in ("id: ledBrightness", "id: floorSlider"):
+        for slider in ("id: ledBrightness", "id: floorSlider",
+                       "id: silentFloorSlider"):
             block = self.qml.split(slider, 1)[1].split("Slider {", 1)[0] \
                 + self.qml.split(slider, 1)[1]
             with self.subTest(slider=slider):
