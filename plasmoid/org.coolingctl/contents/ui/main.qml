@@ -19,6 +19,7 @@ PlasmoidItem {
     property real padRpm: -1
     property string mode: "?"
     property real floor: -1
+    property real silentFloor: -1
     property real cpu: 0
     property real gpuLoad: -1
     property string led: "keep"
@@ -28,6 +29,7 @@ PlasmoidItem {
     property bool modeBusy: false         // 4 s lock after a mode commit (optimistic update)
     property int polls: 0
     property bool sliderBusy: false   // true during the drag + 4 s after (anti snap-back lock)
+    property bool silentSliderBusy: false
 
     // pad visible until the first sample arrives (avoids the startup flash),
     // then only if the pad answers
@@ -79,6 +81,7 @@ PlasmoidItem {
         if (!root.modeBusy)
             root.mode = p[4]
         root.floor = parseFloat(p[5])
+        root.silentFloor = p.length > 12 ? parseFloat(p[12]) : -1
         root.gpu = parseFloat(p[6])
         root.cpu = p.length > 7 ? parseFloat(p[7]) : 0
         root.gpuLoad = p.length > 8 ? parseFloat(p[8]) : -1
@@ -154,7 +157,7 @@ PlasmoidItem {
                 }
 
                 PlasmaComponents.BusyIndicator {
-                    visible: root.modeBusy || root.ledBusy || root.sliderBusy  // qmllint disable unqualified
+                    visible: root.modeBusy || root.ledBusy || root.sliderBusy || root.silentSliderBusy  // qmllint disable unqualified
                     running: visible
                     implicitWidth: Kirigami.Units.iconSizes.small
                     implicitHeight: Kirigami.Units.iconSizes.small
@@ -446,7 +449,7 @@ PlasmoidItem {
                 }
             }
             RowLayout {
-                visible: root.padVisible && root.mode !== "free"
+                visible: root.padVisible && root.mode === "game"
                 Layout.fillWidth: true
                 PlasmaComponents.Label {
                     text: i18n("Game mode minimum RPM")
@@ -459,7 +462,7 @@ PlasmoidItem {
                         if (root.sliderBusy || floorSlider.pressed)
                             return CLogic.snapFloor(floorSlider.value) + " RPM …"
                         return root.floor >= 0
-                                ? CLogic.snapFloor(500 + root.floor * 27) + " RPM · " + Math.round(root.floor) + " %"
+                                ? CLogic.snapFloor(CLogic.pctToRpm(root.floor)) + " RPM · " + Math.round(root.floor) + " %"
                                 : "—"
                     }
                     font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
@@ -469,7 +472,7 @@ PlasmoidItem {
             PlasmaComponents.Slider {
                 id: floorSlider
                 // only shows once the first data point arrives (no flash at position 0)
-                visible: root.padVisible && root.mode !== "free" && root.polls > 0
+                visible: root.padVisible && root.mode === "game" && root.polls > 0
                 Layout.fillWidth: true
                 Layout.bottomMargin: Kirigami.Units.smallSpacing
                 from: 500
@@ -510,7 +513,7 @@ PlasmoidItem {
 
                 function commitFloor() {
                     const cible = CLogic.snapFloor(floorSlider.value)
-                    root.exec(root.helper + " set-floor " + Math.round((cible - 500) / 27))
+                    root.exec(root.helper + " set-floor " + CLogic.rpmToPct(cible))
                 }
 
                 Timer {
@@ -523,7 +526,7 @@ PlasmoidItem {
                     target: root
                     function onFloorChanged() {
                         if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
-                            floorSlider.value = 500 + root.floor * 27
+                            floorSlider.value = CLogic.pctToRpm(root.floor)
                     }
                 }
 
@@ -535,7 +538,93 @@ PlasmoidItem {
                     running: true
                     onTriggered: {
                         if (!root.sliderBusy && !floorSlider.pressed && root.floor >= 0)
-                            floorSlider.value = 500 + root.floor * 27
+                            floorSlider.value = CLogic.pctToRpm(root.floor)
+                    }
+                }
+            }
+
+            // silent mode: same pattern, its own floor (the pad cannot
+            // sustain its 500 RPM minimum - a floor above it keeps the
+            // fan spinning instead of stalling in a start/stop loop)
+            RowLayout {
+                visible: root.padVisible && root.mode === "silent"
+                Layout.fillWidth: true
+                PlasmaComponents.Label {
+                    text: i18n("Silent mode minimum RPM")
+                    font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                    color: Kirigami.Theme.disabledTextColor
+                }
+                Item { Layout.fillWidth: true }
+                PlasmaComponents.Label {
+                    text: {
+                        if (root.silentSliderBusy || silentFloorSlider.pressed)
+                            return CLogic.snapFloor(silentFloorSlider.value) + " RPM …"
+                        return root.silentFloor >= 0
+                                ? CLogic.snapFloor(CLogic.pctToRpm(root.silentFloor)) + " RPM · " + Math.round(root.silentFloor) + " %"
+                                : "—"
+                    }
+                    font.pixelSize: Math.round(Application.font.pixelSize * 0.85)
+                    font.weight: Font.Bold
+                }
+            }
+            PlasmaComponents.Slider {
+                id: silentFloorSlider
+                visible: root.padVisible && root.mode === "silent" && root.polls > 0
+                Layout.fillWidth: true
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                from: 500
+                to: 3200
+                stepSize: 300
+                enabled: root.silentFloor >= 0
+                snapMode: QQC2.Slider.SnapAlways
+
+                // seed on creation (same as the game floor slider): the
+                // change-connections and the 5 s resync both arrive too
+                // late on a freshly opened popup
+                Component.onCompleted: {
+                    if (!root.silentSliderBusy && root.silentFloor >= 0)
+                        silentFloorSlider.value = CLogic.pctToRpm(root.silentFloor)
+                }
+
+                onPressedChanged: {
+                    if (pressed) {
+                        root.silentSliderBusy = true
+                    } else {
+                        commitSilentFloor()
+                        silentSliderLock.restart()
+                    }
+                }
+                onMoved: {
+                    if (!pressed)
+                        commitSilentFloor()
+                }
+
+                function commitSilentFloor() {
+                    const cible = CLogic.snapFloor(silentFloorSlider.value)
+                    root.exec(root.helper + " set-silent-floor " + CLogic.rpmToPct(cible))
+                }
+
+                Timer {
+                    id: silentSliderLock
+                    interval: 4000
+                    onTriggered: root.silentSliderBusy = false
+                }
+
+                Connections {
+                    target: root
+                    function onSilentFloorChanged() {
+                        if (!root.silentSliderBusy && !silentFloorSlider.pressed && root.silentFloor >= 0)
+                            silentFloorSlider.value = CLogic.pctToRpm(root.silentFloor)
+                    }
+                }
+
+                Timer {
+                    interval: 5000
+                    repeat: true
+                    running: true
+                    onTriggered: {
+                        if (!root.silentSliderBusy && !silentFloorSlider.pressed && root.silentFloor >= 0)
+                            silentFloorSlider.value = CLogic.pctToRpm(root.silentFloor)
                     }
                 }
             }
