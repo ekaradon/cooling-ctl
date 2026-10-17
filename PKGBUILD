@@ -1,6 +1,6 @@
 # Maintainer: ekaradon <ekaradon@users.noreply.github.com>
 pkgname=cooling-ctl
-pkgver=0.8.0
+pkgver=0.9.0
 pkgrel=1
 pkgdesc="Plasma 6 plasmoid + daemon: temperatures, internal fans and Razer Laptop Cooling Pad control (default curve / game mode, signal-based, no restarts)"
 arch=(any)
