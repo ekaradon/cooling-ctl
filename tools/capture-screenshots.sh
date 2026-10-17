@@ -34,7 +34,6 @@ OUT_DIR="${OUT_DIR:-$ROOT/screenshots}"
 CHART_WAIT="${CHART_WAIT:-12}"
 LIGHT_THEME="${LIGHT_THEME:-org.kde.breeze.desktop}"
 DARK_THEME="${DARK_THEME:-org.kde.breezedark.desktop}"
-KWIN_LOG_UNIT="plasma-kwin_wayland"
 
 mkdir -p "$OUT_DIR"
 
@@ -74,11 +73,21 @@ EOF
 
 
 # --- theme bookkeeping -------------------------------------------------------
+# Record the theme state as OBSERVED, and restore exactly that. Careful:
+# on Plasma 6 with the auto day/night color scheme, plasma-apply-lookandfeel
+# does NOT persist LookAndFeelPackage (the key stays empty) — an equality
+# check on that key alone would match "nothing changed" and leave the last
+# forced color scheme in place. The empty package + observed scheme IS the
+# machine's normal auto state; never force an explicit package to "fix" it.
 THEME0=$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)
+SCHEME0=$(kreadconfig6 --file kdeglobals --group General --key ColorScheme)
 restore_theme() {
-    kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage \
-        | grep -q "^$THEME0$" || \
+    if [ -z "$THEME0" ]; then
+        kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage ""
+        [ -n "$SCHEME0" ] && plasma-apply-colorscheme "$SCHEME0" >/dev/null 2>&1
+    else
         plasma-apply-lookandfeel -a "$THEME0" >/dev/null 2>&1
+    fi
 }
 cleanup() {
     restore_theme
