@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] — 2026-10-17
+
+### Added
+- silent-mode floor slider - `feat(plasmoid)` (4df010e)
+- set-silent-floor verb, 13-field status contract - `feat(helper)` (cf9c9e8)
+- hold a configurable floor under the silent curve - `feat(daemon)` (416bdd5)
+
 ## [0.7.2] — 2026-10-05
 
 ### Fixed
