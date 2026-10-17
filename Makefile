@@ -3,6 +3,7 @@
 #   make test      unit + structural + integration + QML + lint (the gate)
 #   make lint      qmllint alone (fast feedback while editing QML)
 #   make smoke     plasmoid load smoke test (requires the plasmoid installed)
+#   make shots     regenerate the README screenshots from the live widget
 #   make pkg       build the Arch package via makepkg
 #   make check     test + lint + smoke + pkg  (pre-release gate)
 #   make clean     remove build artifacts
@@ -10,7 +11,7 @@
 # Environment pass-through: SKIP_INTEGRATION, RUN_SMOKE, COOLINGCTL_PYTHON,
 # COOLINGCTL_REFERENCE (see tests/run.sh).
 
-.PHONY: test lint smoke pkg check clean
+.PHONY: test lint smoke shots pkg check clean
 
 PKG   := $(shell grep -m1 '^pkgname=' PKGBUILD | cut -d= -f2)
 VER   := $(shell grep -m1 '^pkgver=' PKGBUILD | cut -d= -f2)
@@ -56,6 +57,9 @@ smoke:
 	fi; \
 	echo "OK: load without QML errors"; \
 	rm -f "$$LOG"
+
+shots:
+	@tools/screenshot.sh
 
 pkg:
 	@env -u LD_LIBRARY_PATH makepkg -f
