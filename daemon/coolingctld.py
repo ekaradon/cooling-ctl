@@ -14,11 +14,13 @@ without ever restarting the process:
 Data:
   curve   : $XDG_CONFIG_HOME/coolingctl/silent-curve.json
   floor : $XDG_CONFIG_HOME/coolingctl/game-floor.json (first point)
+  silent floor : $XDG_CONFIG_HOME/coolingctl/silent-floor.json (first
+             point; the silent curve never commands below it - 0 = no floor)
 
 State published (atomically, every loop):
   $XDG_RUNTIME_DIR/coolingctl.status : lignes cle=valeur
-  mode, temp, floor_pct, floor_rpm, rpm_cmd, rpm_reported, pad_present,
-  led, led_brightness, led_color
+  mode, temp, floor_pct, floor_rpm, silent_floor_pct, silent_floor_rpm,
+  rpm_cmd, rpm_reported, pad_present, led, led_brightness, led_color
 
 Clean stop (SIGTERM): sends the "off" report to the pad (back to firmware
 behavior), like the historical controller.
@@ -58,6 +60,7 @@ CURVES_DIR = os.environ.get("COOLINGCTL_CURVES_DIR",
                             os.path.join(XDG_CONFIG, "coolingctl"))
 CURVE_FILE = os.path.join(CURVES_DIR, "silent-curve.json")
 GAMING_FILE = os.path.join(CURVES_DIR, "game-floor.json")
+SILENT_FILE = os.path.join(CURVES_DIR, "silent-floor.json")
 LED_FILE = os.path.join(CURVES_DIR, "led.json")
 STATUS_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), "coolingctl.status")
@@ -84,6 +87,16 @@ DEFAULT_FLOOR = {
     "hysteresis": 2,
     "sensors": "auto",
 }
+# Silent-mode floor: 0 = the curve alone decides (identical to the
+# pre-floor behavior). The pad cannot sustain its 500 RPM minimum (the
+# motor stalls and restarts in a loop, measured 2026-10-12) - a floor
+# above 0 keeps the fan spinning instead of churning at the stall point.
+DEFAULT_SILENT_FLOOR = {
+    "curve": [{"temp": 0, "percent": 0}],    # first point = the floor
+    "interval": 3,
+    "hysteresis": 2,
+    "sensors": "auto",
+}
 # "keep" never sends LED packets: least surprise on first start.
 DEFAULT_LED = {
     "effect": "keep",
@@ -100,6 +113,7 @@ def ensure_configs(curves_dir: str | None = None) -> None:
     os.makedirs(d, exist_ok=True)
     for name, data in (("silent-curve.json", DEFAULT_SILENT_CURVE),
                        ("game-floor.json", DEFAULT_FLOOR),
+                       ("silent-floor.json", DEFAULT_SILENT_FLOOR),
                        ("led.json", DEFAULT_LED)):
         path = os.path.join(d, name)
         if not os.path.exists(path):
@@ -365,6 +379,7 @@ class State:
         self.mode: str = "silent"        # silent | game | free
         self.curve: list[tuple[float, float]] = []
         self.floor_pct: float = 30
+        self.silent_floor_pct: float = 0
         self.last_rpm: int | None = None
         self.read_fails: int = 0
         self.led: dict[str, object] = {}  # led.json contents
@@ -378,6 +393,9 @@ class State:
         pct = self.load_floor(GAMING_FILE)
         if pct is not None:
             self.floor_pct = pct
+        spct = self.load_floor(SILENT_FILE)
+        if spct is not None:
+            self.silent_floor_pct = spct
         self.led = self.load_led(LED_FILE)
         self.last_heat_rgb = None    # force a re-apply
         self.last_heat_bright = None
@@ -437,11 +455,22 @@ def pct_to_rpm(pct: float) -> int:
     return int(round(rpm / 50.0)) * 50
 
 
+def apply_floor(pct: float | None, floor_pct: float) -> float | None:
+    """Clamp a curve output onto a floor percent (0 = no floor).
+    The silent-mode pad floor exists because the pad cannot sustain
+    its 500 RPM minimum (motor stall/restart loop, measured 2026-10-12):
+    a floor keeps the fan spinning at a stable low speed instead."""
+    if pct is None:
+        return None
+    return max(pct, floor_pct)
+
+
 def write_status(mode: str, temp: float | None, floor_pct: float,
                  rpm_cmd: int | None, rpm_rep: int | None,
                  pad_present: bool,
                  led: str = "keep", led_brightness: int = 100,
-                 led_color: str = "#ff6600") -> None:
+                 led_color: str = "#ff6600",
+                 silent_floor_pct: float = 0.0) -> None:
     tmp = STATUS_FILE + ".tmp"
     try:
         with open(tmp, "w") as f:
@@ -449,6 +478,8 @@ def write_status(mode: str, temp: float | None, floor_pct: float,
             f.write(f"temp={temp if temp is not None else -1}\n")
             f.write(f"floor_pct={floor_pct}\n")
             f.write(f"floor_rpm={pct_to_rpm(floor_pct)}\n")
+            f.write(f"silent_floor_pct={silent_floor_pct}\n")
+            f.write(f"silent_floor_rpm={pct_to_rpm(silent_floor_pct)}\n")
             f.write(f"rpm_cmd={rpm_cmd if rpm_cmd is not None else -1}\n")
             f.write(f"rpm_reported={rpm_rep if rpm_rep is not None else -1}\n")
             f.write(f"pad_present={1 if pad_present else 0}\n")
@@ -541,7 +572,8 @@ def main() -> None:
             if st.mode == "game":
                 pct = st.floor_pct
             else:
-                pct = interpolate(st.curve, temp)
+                pct = apply_floor(interpolate(st.curve, temp),
+                                  st.silent_floor_pct)
         rpm = pct_to_rpm(pct) if pct is not None else None
 
         # dedup (device granularity)
@@ -601,7 +633,8 @@ def main() -> None:
         write_status(st.mode, temp, st.floor_pct, st.last_rpm, last_rep, pad_present,
                     cfg_str(st.led, "effect", "keep"),
                     int(cfg_num(st.led, "brightness", 100)),
-                    cfg_str(st.led, "color", "#ff6600"))
+                    cfg_str(st.led, "color", "#ff6600"),
+                    st.silent_floor_pct)
 
         time.sleep(INTERVAL)
 
