@@ -64,7 +64,7 @@ Add the widget: right-click the panel → *Add widgets* → **Cooling Control**.
 The daemon creates `~/.config/coolingctl/` with sensible defaults on first
 start — edit them freely, `SIGHUP` reloads. Reference:
 
-`silent-curve.json` — temperature → percent curve, linear interpolation:
+`default-curve.json` — temperature → percent curve, linear interpolation:
 
 ```json
 {
@@ -94,8 +94,8 @@ game mode fan floor** (the pad never runs below it while gaming):
 }
 ```
 
-`silent-floor.json` — a single-point curve, same shape; its **first point's
-percent is the silent mode fan floor**. The silent curve never commands
+`default-floor.json` — a single-point curve, same shape; its **first point's
+percent is the default mode fan floor**. The default curve never commands
 below it. `0` (the default) lets the curve alone decide. A floor above 0
 keeps the pad spinning at a stable low speed — the pad cannot sustain its
 own 500 RPM minimum (the motor stalls and restarts in a loop), so a curve
@@ -127,7 +127,7 @@ end="systemctl --user kill --signal=SIGUSR2 coolingctl.service"
 | Signal | Mode | Behavior |
 |---|---|---|
 | `SIGUSR1` | game | fan floor, held in daemon memory |
-| `SIGUSR2` | silent | curve against k10temp |
+| `SIGUSR2` | default | curve against k10temp |
 | `SIGWINCH` | free | releases control (pad firmware) |
 | `SIGHUP` | — | reload the config files |
 
@@ -137,10 +137,10 @@ systemctl --user kill --signal=SIGUSR1 coolingctl.service
 
 Live state is published atomically every 3 s in
 `$XDG_RUNTIME_DIR/coolingctl.status`
-(`mode,temp,floor_pct,floor_rpm,silent_floor_pct,silent_floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
+(`mode,temp,floor_pct,floor_rpm,default_floor_pct,default_floor_rpm,rpm_cmd,rpm_reported,pad_present,led,led_brightness,led_color`).
 The helper `coolingctl.sh status` prints
-`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct`;
-actions: `set-floor <pct>`, `set-silent-floor <pct>`, `mode <game|silent|free>`,
+`tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct`;
+actions: `set-floor <pct>`, `set-default-floor <pct>`, `mode <game|default|free>`,
 `led <keep|off|static|spectrum|wave|heat>`, `led static <#rrggbb>`,
 `led wave <left|right>`, `led bright <0-100>`.
 

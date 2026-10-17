@@ -2,19 +2,19 @@
 """Tests of the coolingctl.sh helper — the plasmoid's interface contract.
 Covered specs:
   S6  `status`: pipe-separated line tctl|fan1|fan2|pad_rpm|mode|floor_pct|gpu|
-      cpu|gpu_pct|led|led_brightness|led_color|silent_floor_pct (13 fields)
-      mode passthrough: silent|game|free (fallback silent);
-      pad_rpm, floor and silent floor come from the state file; absent -> -1
+      cpu|gpu_pct|led|led_brightness|led_color|default_floor_pct (13 fields)
+      mode passthrough: default|game|free (fallback default);
+      pad_rpm, floor and default floor come from the state file; absent -> -1
   S7  `set-floor N`: writes the floor into the json (clamped 0..100),
       bounded, invalid rejected; sends SIGHUP to the daemon
-  S54 `set-silent-floor N`: same contract as S7 on silent-floor.json
-  S8  `mode X`: SIGUSR1 (game), SIGUSR2 (silent), SIGWINCH (free);
+  S54 `set-default-floor N`: same contract as S7 on default-floor.json
+  S8  `mode X`: SIGUSR1 (game), SIGUSR2 (default), SIGWINCH (free);
       invalid mode rejected
   S35 `led X`: rewrites led.json (effect, static color, wave direction,
       brightness clamped 0..100) and SIGHUPs; status carries the LED effect
       as its 10th field
 Materialized through a fake environment: temporary XDG_RUNTIME_DIR,
-temporary curve json (COOLINGCTL_GAMING_JSON, COOLINGCTL_SILENT_JSON),
+temporary curve json (COOLINGCTL_GAMING_JSON, COOLINGCTL_DEFAULT_JSON),
 a fake systemctl in the PATH that logs its arguments.
 """
 import os
@@ -58,8 +58,8 @@ class FakeEnv:
         with open(self.gaming_json, "w") as f:
             json.dump({"curve": [{"temp": 0, "percent": 30},
                                  {"temp": 120, "percent": 30}]}, f)
-        self.silent_json = os.path.join(self.tmp, "silent-floor.json")
-        with open(self.silent_json, "w") as f:
+        self.default_json = os.path.join(self.tmp, "default-floor.json")
+        with open(self.default_json, "w") as f:
             json.dump({"curve": [{"temp": 0, "percent": 0}]}, f)
         self.led_json = os.path.join(self.tmp, "led.json")
         with open(self.led_json, "w") as f:
@@ -76,7 +76,7 @@ class FakeEnv:
         e["PATH"] = self.fakebin + ":" + e["PATH"]
         e["XDG_CONFIG_HOME"] = os.path.join(self.tmp, "config")
         e["COOLINGCTL_GAMING_JSON"] = self.gaming_json
-        e["COOLINGCTL_SILENT_JSON"] = self.silent_json
+        e["COOLINGCTL_DEFAULT_JSON"] = self.default_json
         e["COOLINGCTL_LED_JSON"] = self.led_json
         e["COOLINGCTL_DRM_DIR"] = self.drm
         e.pop("LD_LIBRARY_PATH", None)
@@ -97,8 +97,8 @@ class FakeEnv:
         with open(self.gaming_json) as f:
             return json.load(f)["curve"][0]["percent"]
 
-    def silent_floor(self):
-        with open(self.silent_json) as f:
+    def default_floor(self):
+        with open(self.default_json) as f:
             return json.load(f)["curve"][0]["percent"]
     def systemctl_calls(self):
         try:
@@ -111,18 +111,18 @@ class FakeEnv:
 class TestStatus(unittest.TestCase):
     """S6: status format and mapping."""
     def test_field_count(self):
-        env = FakeEnv("mode=silent\ntemp=60.0\nfloor_pct=30.0\n"
+        env = FakeEnv("mode=default\ntemp=60.0\nfloor_pct=30.0\n"
                       "floor_rpm=1300\nrpm_cmd=500\nrpm_reported=500\n"
-                      "pad_present=1\nsilent_floor_pct=11.0\n")
+                      "pad_present=1\ndefault_floor_pct=11.0\n")
         try:
             r = env.run("status")
             self.assertEqual(r.returncode, 0, r.stderr)
             fields = r.stdout.strip().split("|")
             self.assertEqual(len(fields), 13, fields)
             self.assertEqual(fields[3], "500")        # pad_rpm
-            self.assertEqual(fields[4], "silent")  # curve -> silent
+            self.assertEqual(fields[4], "default")  # curve -> default
             self.assertEqual(fields[5], "30.0")        # floor
-            self.assertEqual(fields[12], "11.0")       # silent floor
+            self.assertEqual(fields[12], "11.0")       # default floor
             self.assertRegex(fields[7], r"^[0-9]+$")    # CPU load 0..100
             self.assertRegex(fields[8], r"^-?[0-9]+$")  # GPU load (-1 when absent)
         finally:
@@ -139,7 +139,7 @@ class TestStatus(unittest.TestCase):
             finally:
                 env.cleanup()
     def test_led_field_passthrough(self):
-        env = FakeEnv("mode=silent\nrpm_reported=1300\nfloor_pct=30\nled=heat\n")
+        env = FakeEnv("mode=default\nrpm_reported=1300\nfloor_pct=30\nled=heat\n")
         try:
             fields = env.run("status").stdout.strip().split("|")
             self.assertEqual(fields[9], "heat")
@@ -241,9 +241,9 @@ class TestLed(unittest.TestCase):
         try:
             fields = env.run("status").stdout.strip().split("|")
             self.assertEqual(fields[3], "-1")
-            self.assertEqual(fields[4], "silent")
+            self.assertEqual(fields[4], "default")
             self.assertEqual(fields[5], "-1")
-            self.assertEqual(fields[12], "-1")  # silent floor unknown
+            self.assertEqual(fields[12], "-1")  # default floor unknown
         finally:
             env.cleanup()
     def test_cpu_delta(self):
@@ -314,15 +314,15 @@ class TestSetFloor(unittest.TestCase):
         finally:
             env.cleanup()
 
-class TestSetSilentFloor(unittest.TestCase):
-    """S54: `set-silent-floor N` - same contract as set-floor (S7),
-    applied to silent-floor.json (0 = the curve alone decides)."""
+class TestSetDefaultFloor(unittest.TestCase):
+    """S54: `set-default-floor N` - same contract as set-floor (S7),
+    applied to default-floor.json (0 = the curve alone decides)."""
     def test_write_and_signal(self):
         env = FakeEnv()
         try:
-            r = env.run("set-silent-floor", "11")
+            r = env.run("set-default-floor", "11")
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(env.silent_floor(), 11)
+            self.assertEqual(env.default_floor(), 11)
             self.assertEqual(env.floor(), 30)  # the game floor is untouched
             self.assertIn("--user kill --signal=SIGHUP coolingctl.service",
                           env.systemctl_calls())
@@ -331,26 +331,26 @@ class TestSetSilentFloor(unittest.TestCase):
     def test_zero_is_valid(self):
         env = FakeEnv()
         try:
-            env.run("set-silent-floor", "22")
-            self.assertEqual(env.silent_floor(), 22)
-            self.assertEqual(env.run("set-silent-floor", "0").returncode, 0)
-            self.assertEqual(env.silent_floor(), 0)  # 0 % = no floor
+            env.run("set-default-floor", "22")
+            self.assertEqual(env.default_floor(), 22)
+            self.assertEqual(env.run("set-default-floor", "0").returncode, 0)
+            self.assertEqual(env.default_floor(), 0)  # 0 % = no floor
         finally:
             env.cleanup()
     def test_clamp_and_invalid(self):
         env = FakeEnv()
         try:
-            env.run("set-silent-floor", "150")
-            self.assertEqual(env.silent_floor(), 100)
-            self.assertNotEqual(env.run("set-silent-floor", "-3").returncode, 0)
-            self.assertNotEqual(env.run("set-silent-floor", "abc").returncode, 0)
-            self.assertNotEqual(env.run("set-silent-floor").returncode, 0)
+            env.run("set-default-floor", "150")
+            self.assertEqual(env.default_floor(), 100)
+            self.assertNotEqual(env.run("set-default-floor", "-3").returncode, 0)
+            self.assertNotEqual(env.run("set-default-floor", "abc").returncode, 0)
+            self.assertNotEqual(env.run("set-default-floor").returncode, 0)
         finally:
             env.cleanup()
 class TestMode(unittest.TestCase):
     """S8: mode signals."""
     def test_signals(self):
-        for mode, sig in [("game", "SIGUSR1"), ("silent", "SIGUSR2"),
+        for mode, sig in [("game", "SIGUSR1"), ("default", "SIGUSR2"),
                            ("free", "SIGWINCH")]:
             env = FakeEnv()
             try:

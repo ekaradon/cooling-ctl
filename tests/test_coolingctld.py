@@ -103,8 +103,8 @@ class TestInterpolation(unittest.TestCase):
         self.assertIsNone(d.interpolate([], 50))
 
 
-class TestSilentFloor(unittest.TestCase):
-    """S52: the silent-mode curve output is clamped onto a configurable
+class TestDefaultFloor(unittest.TestCase):
+    """S52: the default-mode curve output is clamped onto a configurable
     floor percent (0 = no floor). The pad cannot sustain its 500 RPM
     minimum (motor stall/restart loop, measured 2026-10-12): a floor
     keeps the fan spinning at a stable low speed instead."""
@@ -160,7 +160,7 @@ class TestStatusFile(unittest.TestCase):
         d.STATUS_FILE = os.path.join(tmpdir, "coolingctl.status")
         defaults = dict(mode="game", temp=63.5, floor_pct=30.0,
                         rpm_cmd=1300, rpm_rep=1300, pad_present=True,
-                        silent_floor_pct=11.0)
+                        default_floor_pct=11.0)
         defaults.update(kw)
         d.write_status(**defaults)
         with open(d.STATUS_FILE) as f:
@@ -173,14 +173,14 @@ class TestStatusFile(unittest.TestCase):
             for expected in ["mode=game", "temp=63.5", "floor_pct=30.0",
                            "floor_rpm=1300", "rpm_cmd=1300",
                            "rpm_reported=1300", "pad_present=1",
-                           "silent_floor_pct=11.0", "silent_floor_rpm=800"]:
+                           "default_floor_pct=11.0", "default_floor_rpm=800"]:
                 self.assertIn(expected, content)
             self.assertNotIn(".tmp", os.listdir(tmpdir))  # atomicity
         finally:
             shutil.rmtree(tmpdir)
 
     def test_missing_values(self):
-        tmpdir, content = self._write(mode="silent", temp=None,
+        tmpdir, content = self._write(mode="default", temp=None,
                                       rpm_cmd=None, rpm_rep=None, pad_present=False)
         try:
             for expected in ["temp=-1", "rpm_cmd=-1", "rpm_reported=-1", "pad_present=0"]:
@@ -195,8 +195,8 @@ class TestDefaults(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         try:
             d.ensure_configs(curves_dir=tmpdir)
-            for name in ("silent-curve.json", "game-floor.json",
-                         "silent-floor.json"):
+            for name in ("default-curve.json", "game-floor.json",
+                         "default-floor.json"):
                 path = os.path.join(tmpdir, name)
                 self.assertTrue(os.path.exists(path), f"{name} must be created")
                 with open(path) as f:
@@ -207,9 +207,9 @@ class TestDefaults(unittest.TestCase):
                 floor = json.load(f)["curve"]
             self.assertEqual(len(floor), 1)
             self.assertIsInstance(floor[0]["percent"], (int, float))
-            # the silent floor defaults to 0: the curve alone decides
+            # the default floor defaults to 0: the curve alone decides
             # (identical to the pre-floor behavior, no surprise on upgrade)
-            with open(os.path.join(tmpdir, "silent-floor.json")) as f:
+            with open(os.path.join(tmpdir, "default-floor.json")) as f:
                 sfloor = json.load(f)["curve"]
             self.assertEqual(len(sfloor), 1)
             self.assertEqual(sfloor[0]["percent"], 0)
@@ -219,6 +219,36 @@ class TestDefaults(unittest.TestCase):
             d.ensure_configs(curves_dir=tmpdir)
             with open(os.path.join(tmpdir, "game-floor.json")) as f:
                 self.assertEqual(json.load(f)["curve"][0]["percent"], 50)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_s56_migrates_silent_configs(self):
+        """The silent mode was renamed default: a user's tuned files are
+        carried over under the new names, never replaced by fresh defaults,
+        and an existing new-name file always wins over a stale old one."""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(tmpdir, "silent-curve.json"), "w") as f:
+                f.write('{"curve": [{"temp": 0, "percent": 42}]}')
+            with open(os.path.join(tmpdir, "silent-floor.json"), "w") as f:
+                f.write('{"curve": [{"temp": 0, "percent": 7}]}')
+            d.ensure_configs(curves_dir=tmpdir)
+            self.assertFalse(os.path.exists(os.path.join(tmpdir,
+                                                         "silent-curve.json")))
+            with open(os.path.join(tmpdir, "default-curve.json")) as f:
+                self.assertEqual(json.load(f)["curve"][0]["percent"], 42)
+            with open(os.path.join(tmpdir, "default-floor.json")) as f:
+                self.assertEqual(json.load(f)["curve"][0]["percent"], 7)
+            # a new-name file is never clobbered by a stale old-name one
+            with open(os.path.join(tmpdir, "default-floor.json"), "w") as f:
+                f.write('{"curve": [{"temp": 0, "percent": 9}]}')
+            with open(os.path.join(tmpdir, "silent-floor.json"), "w") as f:
+                f.write('{"curve": [{"temp": 0, "percent": 11}]}')
+            d.ensure_configs(curves_dir=tmpdir)
+            with open(os.path.join(tmpdir, "default-floor.json")) as f:
+                self.assertEqual(json.load(f)["curve"][0]["percent"], 9)
+            self.assertTrue(os.path.exists(os.path.join(tmpdir,
+                                                        "silent-floor.json")))
         finally:
             shutil.rmtree(tmpdir)
 
